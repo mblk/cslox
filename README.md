@@ -9,10 +9,10 @@ This repository contains my implementation of the [lox language] following the b
 
 ## Status
 
-- [ ] REPL
-- [ ] Lexing
+- [x] REPL
+- [x] Lexing
 - [ ] Parsing
-- ...
+- [ ] ...
 
 ## Building
 
