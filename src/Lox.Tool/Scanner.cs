@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.Collections.Frozen;
+using System.Globalization;
 
 namespace Lox.Tool;
 
@@ -28,39 +29,53 @@ public record Token(TokenType Type, string Lexeme, object? Literal);
 
 public class Scanner
 {
-    private readonly Dictionary<char, TokenType> _singleCharacterTokens = new()
-    {
-        { '(', TokenType.LEFT_PAREN },
-        { ')', TokenType.RIGHT_PAREN },
-        { '{', TokenType.LEFT_BRACE },
-        { '}', TokenType.RIGHT_BRACE },
-        { ',', TokenType.COMMA },
-        { '.', TokenType.DOT },
-        { '-', TokenType.MINUS },
-        { '+', TokenType.PLUS },
-        { ';', TokenType.SEMICOLON },
-        { '*', TokenType.STAR },
-    };
+    private readonly FrozenDictionary<char, TokenType> _singleCharacterTokens
+        = new Dictionary<char, TokenType>()
+        {
+            { '(', TokenType.LEFT_PAREN },
+            { ')', TokenType.RIGHT_PAREN },
+            { '{', TokenType.LEFT_BRACE },
+            { '}', TokenType.RIGHT_BRACE },
+            { ',', TokenType.COMMA },
+            { '.', TokenType.DOT },
+            { '-', TokenType.MINUS },
+            { '+', TokenType.PLUS },
+            { ';', TokenType.SEMICOLON },
+            { '*', TokenType.STAR },
+        }
+        .ToFrozenDictionary();
 
-    private readonly Dictionary<string, TokenType> _keywords = new()
-    {
-        { "and", TokenType.AND },
-        { "class", TokenType.CLASS },
-        { "else", TokenType.ELSE },
-        { "false", TokenType.FALSE },
-        { "fun", TokenType.FUN },
-        { "for", TokenType.FOR },
-        { "if", TokenType.IF },
-        { "nil", TokenType.NIL },
-        { "or", TokenType.OR },
-        { "print", TokenType.PRINT },
-        { "return", TokenType.RETURN },
-        { "super", TokenType.SUPER },
-        { "this", TokenType.THIS },
-        { "true", TokenType.TRUE },
-        { "var", TokenType.VAR },
-        { "while", TokenType.WHILE },
-    };
+    private readonly FrozenDictionary<char, (TokenType, char, TokenType)> _oneOrTwoCharacterTokens
+        = new Dictionary<char, (TokenType, char, TokenType)>()
+        {
+            { '!', ( TokenType.BANG,    '=', TokenType.BANG_EQUAL    ) },
+            { '=', ( TokenType.EQUAL,   '=', TokenType.EQUAL_EQUAL   ) },
+            { '<', ( TokenType.LESS,    '=', TokenType.LESS_EQUAL    ) },
+            { '>', ( TokenType.GREATER, '=', TokenType.GREATER_EQUAL ) },
+        }
+        .ToFrozenDictionary();
+
+    private readonly FrozenDictionary<string, TokenType> _keywords
+        = new Dictionary<string, TokenType>()
+        {
+            { "and", TokenType.AND },
+            { "class", TokenType.CLASS },
+            { "else", TokenType.ELSE },
+            { "false", TokenType.FALSE },
+            { "fun", TokenType.FUN },
+            { "for", TokenType.FOR },
+            { "if", TokenType.IF },
+            { "nil", TokenType.NIL },
+            { "or", TokenType.OR },
+            { "print", TokenType.PRINT },
+            { "return", TokenType.RETURN },
+            { "super", TokenType.SUPER },
+            { "this", TokenType.THIS },
+            { "true", TokenType.TRUE },
+            { "var", TokenType.VAR },
+            { "while", TokenType.WHILE },
+        }
+        .ToFrozenDictionary();
 
     private readonly string _source;
 
@@ -102,20 +117,8 @@ public class Scanner
                 AddToken(tokenType);
                 break;
 
-            case '!':
-                AddToken(Match('=') ? TokenType.BANG_EQUAL : TokenType.BANG);
-                break;
-
-            case '=':
-                AddToken(Match('=') ? TokenType.EQUAL_EQUAL : TokenType.EQUAL);
-                break;
-
-            case '<':
-                AddToken(Match('=') ? TokenType.LESS_EQUAL : TokenType.LESS);
-                break;
-
-            case '>':
-                AddToken(Match('=') ? TokenType.GREATER_EQUAL : TokenType.GREATER);
+            case char _ when _oneOrTwoCharacterTokens.TryGetValue(c, out var x):
+                AddToken(Match(x.Item2) ? x.Item3 : x.Item1);
                 break;
 
             case '/':
@@ -123,7 +126,7 @@ public class Scanner
                 if (Match('/'))
                 {
                     // Consume rest of the line.
-                    while (Peek() != '\n' && !IsAtEnd())
+                    while (Peek() != '\n' && !IsAtEnd()) // TODO similar to ScanString() > make nice method?
                     {
                         Advance();
                     }
