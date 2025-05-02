@@ -1,0 +1,16 @@
+// Hello, this is a comment
+(( )){}				// grouping stuff
+!*+-/=<> <= ==		// operators
+
+// strings
+"hello world!"
+
+"hello
+world
+!"
+
+" "
+
+""
+
+// numbers
