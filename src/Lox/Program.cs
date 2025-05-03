@@ -1,4 +1,4 @@
-﻿namespace Lox.Tool;
+﻿namespace Lox;
 
 public static class Program
 {
@@ -57,5 +57,9 @@ public static class Program
         {
             Console.WriteLine($"{token}");
         }
+
+        var parser = new Parser();
+
+
     }
 }

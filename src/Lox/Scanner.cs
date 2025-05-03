@@ -1,7 +1,7 @@
 ﻿using System.Collections.Frozen;
 using System.Globalization;
 
-namespace Lox.Tool;
+namespace Lox;
 
 public enum TokenType
 {
@@ -14,7 +14,7 @@ public enum TokenType
     EQUAL, EQUAL_EQUAL,
     GREATER, GREATER_EQUAL,
     LESS, LESS_EQUAL,
-
+    
     // Literals.
     IDENTIFIER, STRING, NUMBER,
 
