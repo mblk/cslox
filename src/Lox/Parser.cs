@@ -355,55 +355,9 @@ public class InterpreterVisitor : Expr.IVisitor<object?>
         }
     }
 
-    public object? VisitBinary(Expr.Binary binary)
+    public object? VisitLiteral(Expr.Literal literal)
     {
-        object? left = Evaluate(binary.Left);
-        object? right = Evaluate(binary.Right);
-
-        double numbersToNumber(Func<double, double, double> func)
-        {
-            if (left is double leftDouble && right is double rightDouble)
-                return func(leftDouble, rightDouble);
-
-            throw new RuntimeError(binary.Op, "Operands must be numbers.");
-        }
-
-        bool numbersToBool(Func<double, double, bool> func)
-        {
-            if (left is double leftDouble && right is double rightDouble)
-                return func(leftDouble, rightDouble);
-
-            throw new RuntimeError(binary.Op, "Operands must be numbers.");
-        }
-
-        switch (binary.Op.Type)
-        {
-            case TokenType.PLUS:
-            {
-                if (left is double leftDouble && right is double rightDouble)
-                    return leftDouble + rightDouble;
-
-                if (left is string leftString && right is string rightString)
-                    return leftString + rightString;
-
-                throw new RuntimeError(binary.Op, "Operands must be numbers or strings.");
-            }
-
-            case TokenType.MINUS: return numbersToNumber((l, r) => l - r);
-            case TokenType.SLASH: return numbersToNumber((l, r) => l / r);
-            case TokenType.STAR: return numbersToNumber((l, r) => l * r);
-
-            case TokenType.GREATER: return numbersToBool((l, r) => l > r);
-            case TokenType.GREATER_EQUAL: return numbersToBool((l, r) => l >= r);
-            case TokenType.LESS: return numbersToBool((l, r) => l < r);
-            case TokenType.LESS_EQUAL: return numbersToBool((l, r) => l <= r);
-
-            case TokenType.EQUAL_EQUAL: return IsEqual(left, right);
-            case TokenType.BANG_EQUAL: return !IsEqual(left, right);
-
-        }
-
-        throw new NotImplementedException("VisitBinary");
+        return literal.Value;
     }
 
     public object? VisitGrouping(Expr.Grouping grouping)
@@ -411,30 +365,68 @@ public class InterpreterVisitor : Expr.IVisitor<object?>
         return Evaluate(grouping.Expression);
     }
 
-    public object? VisitLiteral(Expr.Literal literal)
-    {
-        return literal.Value;
-    }
-
     public object? VisitUnary(Expr.Unary unary)
     {
         object? right = Evaluate(unary.Right);
 
-        switch (unary.Op.Type)
+        T processNumber<T>(Func<double, T> func)
         {
-            case TokenType.MINUS:
-            {
-                if (right is double rightDouble)
-                    return -rightDouble;
+            if (right is double rightDouble)
+                return func(rightDouble);
 
-                throw new RuntimeError(unary.Op, "Operand must be a number.");
-            }
-
-            case TokenType.BANG:
-                return !IsTruthy(right);
+            throw new RuntimeError(unary.Op, "Operand must be a number.");
         }
 
-        throw new NotImplementedException("VisitUnary");
+        return unary.Op.Type switch
+        {
+            TokenType.MINUS => processNumber(r => -r),
+            TokenType.BANG => !IsTruthy(right),
+
+            _ => throw new NotImplementedException("Op not implemented in VisitUnary"),
+        };
+    }
+
+    public object? VisitBinary(Expr.Binary binary)
+    {
+        object? left = Evaluate(binary.Left);
+        object? right = Evaluate(binary.Right);
+
+        object? processPlus()
+        {
+            if (left is double leftDouble && right is double rightDouble)
+                return leftDouble + rightDouble;
+
+            if (left is string leftString && right is string rightString)
+                return leftString + rightString;
+
+            throw new RuntimeError(binary.Op, "Operands must be numbers or strings.");
+        }
+
+        T processNumbers<T>(Func<double, double, T> func)
+        {
+            if (left is double leftDouble && right is double rightDouble)
+                return func(leftDouble, rightDouble);
+
+            throw new RuntimeError(binary.Op, "Operands must be numbers.");
+        }
+
+        return binary.Op.Type switch
+        {
+            TokenType.PLUS => processPlus(),
+            TokenType.MINUS => processNumbers((l, r) => l - r),
+            TokenType.SLASH => processNumbers((l, r) => l / r),
+            TokenType.STAR => processNumbers((l, r) => l * r),
+
+            TokenType.GREATER => processNumbers((l, r) => l > r),
+            TokenType.GREATER_EQUAL => processNumbers((l, r) => l >= r),
+            TokenType.LESS => processNumbers((l, r) => l < r),
+            TokenType.LESS_EQUAL => processNumbers((l, r) => l <= r),
+
+            TokenType.EQUAL_EQUAL => IsEqual(left, right),
+            TokenType.BANG_EQUAL => !IsEqual(left, right),
+
+            _ => throw new NotImplementedException("Op not implemented in VisitBinary"),
+        };
     }
 
     private object? Evaluate(Expr expr)
@@ -442,7 +434,7 @@ public class InterpreterVisitor : Expr.IVisitor<object?>
         return expr.Accept(this);
     }
 
-    private static bool IsTruthy(object? value)
+    private static bool IsTruthy(object? value) // TODO move to extension/helper class?
     {
         // falsey: nil, false
         // truthy: everything else
@@ -453,7 +445,7 @@ public class InterpreterVisitor : Expr.IVisitor<object?>
         return true;
     }
 
-    private static bool IsEqual(object? a, object? b)
+    private static bool IsEqual(object? a, object? b) // TODO move to extension/helper class?
     {
         if (a is null && b is null) return true;
         if (a is null) return false;
