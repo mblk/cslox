@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Numerics;
+using System.Text;
 
 namespace Lox;
 
@@ -325,29 +326,139 @@ public class Parser
 
 public class InterpreterVisitor : Expr.IVisitor<object?>
 {
+    public class RuntimeError : Exception
+    {
+        public Token Token { get; }
+
+        public RuntimeError(Token token, string message)
+            :base(message)
+        {
+            Token = token;
+        }
+    }
+
     public InterpreterVisitor()
     {
+    }
 
+    public object? Interpret(Expr expr)
+    {
+        try
+        {
+            return Evaluate(expr);
+        }
+        catch (RuntimeError runtimeError)
+        {
+            Console.WriteLine($"RuntimeError: {runtimeError.Message}");
+            //_ = runtimeError;
+            return null;
+        }
     }
 
     public object? VisitBinary(Expr.Binary binary)
     {
-        throw new NotImplementedException();
+        object? left = Evaluate(binary.Left);
+        object? right = Evaluate(binary.Right);
+
+        double numbersToNumber(Func<double, double, double> func)
+        {
+            if (left is double leftDouble && right is double rightDouble)
+                return func(leftDouble, rightDouble);
+
+            throw new RuntimeError(binary.Op, "Operands must be numbers.");
+        }
+
+        bool numbersToBool(Func<double, double, bool> func)
+        {
+            if (left is double leftDouble && right is double rightDouble)
+                return func(leftDouble, rightDouble);
+
+            throw new RuntimeError(binary.Op, "Operands must be numbers.");
+        }
+
+        switch (binary.Op.Type)
+        {
+            case TokenType.PLUS:
+            {
+                if (left is double leftDouble && right is double rightDouble)
+                    return leftDouble + rightDouble;
+
+                if (left is string leftString && right is string rightString)
+                    return leftString + rightString;
+
+                throw new RuntimeError(binary.Op, "Operands must be numbers or strings.");
+            }
+
+            case TokenType.MINUS: return numbersToNumber((l, r) => l - r);
+            case TokenType.SLASH: return numbersToNumber((l, r) => l / r);
+            case TokenType.STAR: return numbersToNumber((l, r) => l * r);
+
+            case TokenType.GREATER: return numbersToBool((l, r) => l > r);
+            case TokenType.GREATER_EQUAL: return numbersToBool((l, r) => l >= r);
+            case TokenType.LESS: return numbersToBool((l, r) => l < r);
+            case TokenType.LESS_EQUAL: return numbersToBool((l, r) => l <= r);
+
+            case TokenType.EQUAL_EQUAL: return IsEqual(left, right);
+            case TokenType.BANG_EQUAL: return !IsEqual(left, right);
+
+        }
+
+        throw new NotImplementedException("VisitBinary");
     }
 
     public object? VisitGrouping(Expr.Grouping grouping)
     {
-        throw new NotImplementedException();
+        return Evaluate(grouping.Expression);
     }
 
     public object? VisitLiteral(Expr.Literal literal)
     {
-        throw new NotImplementedException();
+        return literal.Value;
     }
 
     public object? VisitUnary(Expr.Unary unary)
     {
-        throw new NotImplementedException();
+        object? right = Evaluate(unary.Right);
+
+        switch (unary.Op.Type)
+        {
+            case TokenType.MINUS:
+            {
+                if (right is double rightDouble)
+                    return -rightDouble;
+
+                throw new RuntimeError(unary.Op, "Operand must be a number.");
+            }
+
+            case TokenType.BANG:
+                return !IsTruthy(right);
+        }
+
+        throw new NotImplementedException("VisitUnary");
+    }
+
+    private object? Evaluate(Expr expr)
+    {
+        return expr.Accept(this);
+    }
+
+    private static bool IsTruthy(object? value)
+    {
+        // falsey: nil, false
+        // truthy: everything else
+
+        if (value is null) return false;
+        if (value is bool b) return b;
+
+        return true;
+    }
+
+    private static bool IsEqual(object? a, object? b)
+    {
+        if (a is null && b is null) return true;
+        if (a is null) return false;
+
+        return a.Equals(b);
     }
 }
 

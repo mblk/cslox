@@ -53,10 +53,10 @@ public static class Program
 
         var tokens = scanner.ScanTokens().ToArray();
 
-        foreach (var token in tokens)
-        {
-            Console.WriteLine($"{token}");
-        }
+        //foreach (var token in tokens)
+        //{
+        //    Console.WriteLine($"{token}");
+        //}
 
         var parser = new Parser(tokens);
 
@@ -65,9 +65,10 @@ public static class Program
         if (expr is not null)
         {
             var s = expr.Accept(new PrintVisitor());
-            Console.WriteLine(s);
+            Console.WriteLine($"AST: {s}");
+
+            var value = new InterpreterVisitor().Interpret(expr);
+            Console.WriteLine($"Result: {value} ({value?.GetType().Name})");
         }
-
-
     }
 }
