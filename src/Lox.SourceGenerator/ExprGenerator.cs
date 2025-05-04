@@ -66,6 +66,7 @@ public class ExprGenerator : IIncrementalGenerator
             // header
             sb.AppendLine("// Hello World!");
             sb.AppendLine($"// Generated at {DateTime.Now.ToLongTimeString()}");
+            sb.AppendLine("#nullable enable");
 
             // usings
             sb.AppendLine();

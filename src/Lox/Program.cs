@@ -51,14 +51,22 @@ public static class Program
     {
         var scanner = new Scanner(source);
 
-        var tokens = scanner.ScanTokens();
+        var tokens = scanner.ScanTokens().ToArray();
 
         foreach (var token in tokens)
         {
             Console.WriteLine($"{token}");
         }
 
-        var parser = new Parser();
+        var parser = new Parser(tokens);
+
+        var expr = parser.Parse();
+
+        if (expr is not null)
+        {
+            var s = expr.Accept(new PrintVisitor());
+            Console.WriteLine(s);
+        }
 
 
     }
