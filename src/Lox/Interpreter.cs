@@ -4,18 +4,45 @@ namespace Lox;
 
 public struct Nothing { }
 
+public class RuntimeError : Exception
+{
+    public Token Token { get; }
+
+    public RuntimeError(Token token, string message)
+        : base(message)
+    {
+        Token = token;
+    }
+}
+
+public class Environment
+{
+    private readonly Dictionary<string, object?> _values = [];
+
+    public Environment()
+    {
+    }
+
+    public void Define(string name, object? value)
+    {
+        _values[name] = value;
+    }
+
+    public object? Get(string name, Token token)
+    {
+        if (_values.TryGetValue(name, out var value))
+            return value;
+
+        throw new RuntimeError(token, $"Undefined variable '{name}'");
+    }
+
+
+}
+
 public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 {
-    public class RuntimeError : Exception
-    {
-        public Token Token { get; }
+    private readonly Environment _globalEnvironment = new();
 
-        public RuntimeError(Token token, string message)
-            :base(message)
-        {
-            Token = token;
-        }
-    }
 
     public Interpreter()
     {
@@ -54,16 +81,26 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     // Statement visitor
     //
 
-    Nothing Stmt.IVisitor<Nothing>.VisitExpressionStmt(Stmt.Expression expression)
+    public Nothing VisitExpressionStmt(Stmt.Expression expression)
     {
         _ = Evaluate(expression.Expr);
         return new Nothing();
     }
 
-    Nothing Stmt.IVisitor<Nothing>.VisitPrintStmt(Stmt.Print print)
+    public Nothing VisitPrintStmt(Stmt.Print print)
     {
         object? value = Evaluate(print.Expr);
         Console.WriteLine($"{value}"); // TODO stringify
+        return new Nothing();
+    }
+
+    public Nothing VisitVarStmt(Stmt.Var var)
+    {
+        object? value = var.Initializer is not null
+            ? Evaluate(var.Initializer)
+            : null;
+
+        _globalEnvironment.Define(var.Name.Lexeme, value);
         return new Nothing();
     }
 
@@ -145,6 +182,11 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         };
     }
 
+    public object? VisitVariableExpr(Expr.Variable variable)
+    {
+        return _globalEnvironment.Get(variable.Name.Lexeme, variable.Name);
+    }
+
 
 
     //
@@ -179,4 +221,6 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
         return a.Equals(b);
     }
+
+
 }

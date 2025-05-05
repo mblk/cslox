@@ -25,6 +25,11 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
         return FormatAndAcceptChilds($"Unary {unary.Op.Lexeme}", unary.Right);
     }
 
+    public string VisitVariableExpr(Expr.Variable variable)
+    {
+        return $"Variable {variable.Name.Lexeme}";
+    }
+
     private string FormatAndAcceptChilds(string name, params Expr[] exprs)
     {
         var sb = new StringBuilder();
@@ -54,5 +59,18 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
     {
         return $"Print {print.Expr.Accept(this)}; ";
     }
+
+    public string VisitVarStmt(Stmt.Var var)
+    {
+        if (var.Initializer is null)
+        {
+            return $"Var {var.Name.Lexeme}; ";
+        }
+        else
+        {
+            return $"Var {var.Name.Lexeme} = {var.Initializer.Accept(this)}; ";
+        }
+    }
+
 
 }

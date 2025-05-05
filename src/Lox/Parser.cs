@@ -4,13 +4,21 @@ namespace Lox;
 
 public class Parser
 {
+    // =============
+    // == Grammar ==
+    // =============
     //
-    // Grammar:
+    // program      → declaration* EOF ;
     //
-    // program      → statement* EOF ;
+    // declaration  → varDecl
+    //              | statement
+    //              ;
+    //
+    // varDecl      → "var" IDENTIFIER ( "=" expression )? ";" ;
     //
     // statement    → exprStmt
-    //              | printStmt ;
+    //              | printStmt
+    //              ;
     //
     // exprStmt     → expression ";" ;
     //
@@ -27,10 +35,15 @@ public class Parser
     // factor       → unary (( "/" | "*" ) unary )* ;
     //
     // unary        → ( "!" | "-" ) unary
-    //              | primary ;
+    //              | primary
+    //              ;
     //
-    // primary      → NUMBER | STRING | "true" | "false" | "nil"
-    //              | "(" expression ")" ;
+    // primary      → "true" | "false" | "nil"
+    //              | NUMBER | STRING
+    //              | "(" expression ")"
+    //              | INDENTIFIER
+    //              ;
+    //
 
     // Grammar notation Code representation:
     // Terminal     Code to match and consume a token
@@ -49,8 +62,6 @@ public class Parser
             Token = token;
         }
     }
-
-
 
     private readonly IReadOnlyList<Token> _tokens;
 
@@ -80,16 +91,48 @@ public class Parser
 
         while (!IsAtEnd())
         {
-            statements.Add(Statement());
+            var stmt = Declaration();
+            if (stmt is null) continue;
+
+            statements.Add(stmt);
         }
 
         return statements;
     }
 
-    //
-    // statement → exprStmt
-    //           | printStmt ;
-    //
+    private Stmt? Declaration()
+    {
+        try
+        {
+            if (Match(TokenType.VAR))
+                return VarDeclaration();
+
+            return Statement();
+        }
+        catch (ParseError parseError)
+        {
+            _ = parseError;
+
+            Synchronize();
+            return null;
+        }
+    }
+
+    private Stmt VarDeclaration()
+    {
+        Token name = Consume(TokenType.IDENTIFIER, "Expect variable name.");
+
+        Expr? initializer = null;
+        if (Match(TokenType.EQUAL))
+        {
+            initializer = Expression();
+        }
+
+        Consume(TokenType.SEMICOLON, "Expect ';' after variable declaration.");
+
+        return new Stmt.Var(name, initializer);
+    }
+
     private Stmt Statement()
     {
         if (Match(TokenType.PRINT))
@@ -98,9 +141,6 @@ public class Parser
         return ExpressionStatement();
     }
 
-    //
-    // printStmt → "print" expression ";" ;
-    //
     private Stmt PrintStatement()
     {
         Expr expr = Expression();
@@ -108,9 +148,6 @@ public class Parser
         return new Stmt.Print(expr);
     }
 
-    //
-    // exprStmt → expression ";" ;
-    //
     private Stmt ExpressionStatement()
     {
         Expr expr = Expression();
@@ -118,18 +155,11 @@ public class Parser
         return new Stmt.Expression(expr);
     }
 
-
-    //
-    // expression → equality ;
-    //
     private Expr Expression()
     {
         return Equality();
     }
 
-    //
-    // equality → comparison (( "!=" | "==" ) comparison )* ;
-    //
     private Expr Equality()
     {
         Expr expr = Comparison();
@@ -144,9 +174,6 @@ public class Parser
         return expr;
     }
 
-    //
-    // comparison → term (( ">" | ">=" | "<" | "<=" ) term )* ;
-    //
     private Expr Comparison()
     {
         Expr expr = Term();
@@ -161,9 +188,6 @@ public class Parser
         return expr;
     }
 
-    //
-    // term → factor (( "-" | "+" ) factor )* ;
-    //
     private Expr Term()
     {
         Expr expr = Factor();
@@ -178,9 +202,6 @@ public class Parser
         return expr;
     }
 
-    //
-    // factor → unary (( "/" | "*" ) unary )* ;
-    //
     private Expr Factor()
     {
         Expr expr = Unary();
@@ -195,10 +216,6 @@ public class Parser
         return expr;
     }
 
-    //
-    // unary → ( "!" | "-" ) unary
-    //       | primary ;
-    //
     private Expr Unary()
     {
         if (Match(TokenType.BANG, TokenType.MINUS))
@@ -211,10 +228,6 @@ public class Parser
         return Primary();
     }
 
-    //
-    // primary → NUMBER | STRING | "true" | "false" | "nil"
-    //         | "(" expression ")" ;
-    //
     private Expr Primary()
     {
         if (Match(TokenType.TRUE)) return new Expr.Literal(true);
@@ -223,8 +236,7 @@ public class Parser
 
         if (Match(TokenType.NUMBER, TokenType.STRING))
         {
-            Token t = Previous();
-            return new Expr.Literal(t.Literal);
+            return new Expr.Literal(Previous().Literal);
         }
 
         if (Match(TokenType.LEFT_PAREN))
@@ -232,6 +244,11 @@ public class Parser
             Expr expr = Expression();
             Consume(TokenType.RIGHT_PAREN, "Expect ')' after expression.");
             return new Expr.Grouping(expr);
+        }
+
+        if (Match(TokenType.IDENTIFIER))
+        {
+            return new Expr.Variable(Previous());
         }
 
         throw Error("Expect expression.");
