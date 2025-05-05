@@ -1,34 +1,25 @@
-// Hello, this is a comment
-(( )){}				// grouping stuff
-!*+-/=<> <= ==		// operators
-
-// bools
-true
-false
-true or false and (true or false)
-
-// strings
-"hello world!"
-
-"hello
-world
-!"
-
-" "
-
-""
-
-// numbers
-5
-5.6
-
 //
-var a = 7;
-var b = 8;
+//
+//
 
-if (a == b) {
-	print "yay"
-} else {
-	print "nay"
+var a = "global a";
+var b = "global b";
+var c = "global c";
+{
+	var a = "outer a";
+	var b = "outer b";
+	{
+		var a = "inner a";
+		print a;
+		print b;
+		print c;
+	}
+	print a;
+	print b;
+	print c;
 }
+print a;
+print b;
+print c;
 
+// ...

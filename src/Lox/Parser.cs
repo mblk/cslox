@@ -1,4 +1,5 @@
 ﻿using Lox.Model;
+using System.Linq.Expressions;
 
 namespace Lox;
 
@@ -18,11 +19,14 @@ public class Parser
     //
     // statement    → exprStmt
     //              | printStmt
+    //              | block
     //              ;
     //
     // exprStmt     → expression ";" ;
     //
     // printStmt    → "print" expression ";" ;
+    //
+    // block        → "{" declaration* "}" ;
     //
     // expression   → assignment ;
     //
@@ -139,8 +143,8 @@ public class Parser
 
     private Stmt Statement()
     {
-        if (Match(TokenType.PRINT))
-            return PrintStatement();
+        if (Match(TokenType.PRINT)) return PrintStatement();
+        if (Match(TokenType.LEFT_BRACE)) return Block();
 
         return ExpressionStatement();
     }
@@ -157,6 +161,27 @@ public class Parser
         Expr expr = Expression();
         Consume(TokenType.SEMICOLON, "Expect ';' after expression.");
         return new Stmt.Expression(expr);
+    }
+
+    private Stmt Block()
+    {
+        return new Stmt.Block(BlockStatements());
+    }
+
+    private IReadOnlyList<Stmt> BlockStatements()
+    {
+        var statements = new List<Stmt>();
+
+        while (!Check(TokenType.RIGHT_BRACE) && !IsAtEnd())
+        {
+            var stmt = Declaration();
+            if (stmt is null) continue;
+            statements.Add(stmt);
+        }
+
+        Consume(TokenType.RIGHT_BRACE, "Expect '}' after block.");
+
+        return statements;
     }
 
     private Expr Expression()

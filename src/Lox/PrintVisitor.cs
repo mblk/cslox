@@ -55,6 +55,22 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
 
 
 
+    public string VisitBlockStmt(Stmt.Block block)
+    {
+        var sb = new StringBuilder();
+
+        sb.Append("Block { ");
+
+        foreach (var stmt in block.Statements)
+        {
+            sb.Append(stmt.Accept(this));
+        }
+
+        sb.Append("} ");
+
+        return sb.ToString();
+    }
+
     public string VisitExpressionStmt(Stmt.Expression expression)
     {
         return $"{expression.Expr.Accept(this)}; ";
@@ -76,6 +92,5 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
             return $"Var {var.Name.Lexeme} = {var.Initializer.Accept(this)}; ";
         }
     }
-
 
 }

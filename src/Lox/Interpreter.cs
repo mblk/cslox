@@ -19,9 +19,12 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 {
     private readonly Environment _globalEnvironment = new();
 
+    private Environment _environment;
+
 
     public Interpreter()
     {
+        _environment = _globalEnvironment;
     }
 
     //public object? Interpret(Expr expr)
@@ -57,6 +60,12 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     // Statement visitor
     //
 
+    public Nothing VisitBlockStmt(Stmt.Block block)
+    {
+        ExecuteBlock(block.Statements, new Environment(_environment));
+        return new Nothing();
+    }
+
     public Nothing VisitExpressionStmt(Stmt.Expression expression)
     {
         _ = Evaluate(expression.Expr);
@@ -76,7 +85,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
             ? Evaluate(var.Initializer)
             : null;
 
-        _globalEnvironment.Define(var.Name.Lexeme, value);
+        _environment.Define(var.Name.Lexeme, value);
         return new Nothing();
     }
 
@@ -87,7 +96,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     public object? VisitAssignExpr(Expr.Assign assign)
     {
         object? value = Evaluate(assign.Value);
-        _globalEnvironment.Assign(assign.Name.Lexeme, value, assign.Name);
+        _environment.Assign(assign.Name.Lexeme, value, assign.Name);
         return value;
     }
 
@@ -167,7 +176,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
     public object? VisitVariableExpr(Expr.Variable variable)
     {
-        return _globalEnvironment.Get(variable.Name.Lexeme, variable.Name);
+        return _environment.Get(variable.Name.Lexeme, variable.Name);
     }
 
 
@@ -179,6 +188,24 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     private void Execute(Stmt stmt)
     {
         _ = stmt.Accept(this);
+    }
+
+    private void ExecuteBlock(IReadOnlyList<Stmt> statements, Environment environment)
+    {
+        var prevEnvironment = _environment;
+        try
+        {
+            _environment = environment;
+
+            foreach (var statement in statements)
+            {
+                Execute(statement);
+            }
+        }
+        finally
+        {
+            _environment = prevEnvironment;
+        }
     }
 
     private object? Evaluate(Expr expr)
@@ -204,4 +231,6 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
         return a.Equals(b);
     }
+
+
 }

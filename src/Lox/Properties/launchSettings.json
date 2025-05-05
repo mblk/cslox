@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Lox": {
+      "commandName": "Project"
+    },
+    "Lox test.lox": {
+      "commandName": "Project",
+      "commandLineArgs": "../../../../../scripts/test.lox"
+    }
+  }
+}
