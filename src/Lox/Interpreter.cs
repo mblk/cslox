@@ -15,30 +15,6 @@ public class RuntimeError : Exception
     }
 }
 
-public class Environment
-{
-    private readonly Dictionary<string, object?> _values = [];
-
-    public Environment()
-    {
-    }
-
-    public void Define(string name, object? value)
-    {
-        _values[name] = value;
-    }
-
-    public object? Get(string name, Token token)
-    {
-        if (_values.TryGetValue(name, out var value))
-            return value;
-
-        throw new RuntimeError(token, $"Undefined variable '{name}'");
-    }
-
-
-}
-
 public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 {
     private readonly Environment _globalEnvironment = new();
@@ -107,6 +83,13 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     //
     // Expression visitor
     //
+
+    public object? VisitAssignExpr(Expr.Assign assign)
+    {
+        object? value = Evaluate(assign.Value);
+        _globalEnvironment.Assign(assign.Name.Lexeme, value, assign.Name);
+        return value;
+    }
 
     public object? VisitLiteralExpr(Expr.Literal literal)
     {
@@ -221,6 +204,4 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
         return a.Equals(b);
     }
-
-
 }

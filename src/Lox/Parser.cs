@@ -24,7 +24,11 @@ public class Parser
     //
     // printStmt    → "print" expression ";" ;
     //
-    // expression   → equality ;
+    // expression   → assignment ;
+    //
+    // assignment   → IDENTIFIER "=" assignment
+    //              | equality
+    //              ;
     //
     // equality     → comparison (( "!=" | "==" ) comparison )* ;
     //
@@ -157,7 +161,32 @@ public class Parser
 
     private Expr Expression()
     {
-        return Equality();
+        return Assignment();
+    }
+
+    private Expr Assignment()
+    {
+        // Parse potential IDENTIFIER as if it were an equality-expression.
+        Expr expr = Equality();
+
+        // Assignment?
+        if (Match(TokenType.EQUAL))
+        {
+            Token equals = Previous();
+            Expr assignment = Assignment();
+
+            // Check if l-value is valid assignment target.
+            if (expr is Expr.Variable variableExpr)
+            {
+                return new Expr.Assign(variableExpr.Name, assignment);
+            }
+            else
+            {
+                _ = Error(equals, "Invalid assignment target."); // Not throwing
+            }
+        }
+
+        return expr;
     }
 
     private Expr Equality()

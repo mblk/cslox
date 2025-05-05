@@ -5,6 +5,11 @@ namespace Lox;
 
 public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
 {
+    public string VisitAssignExpr(Expr.Assign assign)
+    {
+        return FormatAndAcceptChilds($"Assign {assign.Name.Lexeme}", assign.Value);
+    }
+
     public string VisitBinaryExpr(Expr.Binary binary)
     {
         return FormatAndAcceptChilds($"Binary {binary.Op.Lexeme}", binary.Left, binary.Right);

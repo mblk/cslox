@@ -24,6 +24,7 @@
 //}
 //...
 
+[AstGen("Assign   : Token name, Expr value")]
 [AstGen("Binary   : Expr left, Token op, Expr right")]
 [AstGen("Grouping : Expr expression")]
 [AstGen("Literal  : object? value")]
