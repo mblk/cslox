@@ -1,0 +1,58 @@
+﻿using Lox.Model;
+using System.Text;
+
+namespace Lox;
+
+public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
+{
+    public string VisitBinaryExpr(Expr.Binary binary)
+    {
+        return FormatAndAcceptChilds($"Binary {binary.Op.Lexeme}", binary.Left, binary.Right);
+    }
+
+    public string VisitGroupingExpr(Expr.Grouping grouping)
+    {
+        return FormatAndAcceptChilds($"Grouping", grouping.Expression);
+    }
+
+    public string VisitLiteralExpr(Expr.Literal literal)
+    {
+        return $"Literal {literal.Value ?? "nil"}";
+    }
+
+    public string VisitUnaryExpr(Expr.Unary unary)
+    {
+        return FormatAndAcceptChilds($"Unary {unary.Op.Lexeme}", unary.Right);
+    }
+
+    private string FormatAndAcceptChilds(string name, params Expr[] exprs)
+    {
+        var sb = new StringBuilder();
+
+        sb.Append('(').Append(name);
+
+        foreach (var expr in exprs)
+        {
+            sb.Append(' ');
+            sb.Append(expr.Accept(this));
+        }
+
+        sb.Append(')');
+
+        return sb.ToString();
+    }
+
+
+
+
+    public string VisitExpressionStmt(Stmt.Expression expression)
+    {
+        return $"{expression.Expr.Accept(this)}; ";
+    }
+
+    public string VisitPrintStmt(Stmt.Print print)
+    {
+        return $"Print {print.Expr.Accept(this)}; ";
+    }
+
+}
