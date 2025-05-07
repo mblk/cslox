@@ -316,6 +316,8 @@ public static class TestDefinitionProvider
         //("while", "return_inside", TestCaseType.Running),
         ("while", "syntax", TestCaseType.Running),
         ("while", "var_in_body", TestCaseType.Running),
+
+        ("while", "break_continue", TestCaseType.Running), // Custom test
     ];
 
     public static TestDefinition GetTestDefinition()

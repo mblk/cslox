@@ -23,6 +23,7 @@ This repository contains my implementation of the [lox language] following the b
     - [x] If statements
     - [x] Logical operators
     - [x] While/for loops
+    - [x] Break/continue
     - [ ] Functions
     - [ ] Semantic analysis
     - [ ] Classes

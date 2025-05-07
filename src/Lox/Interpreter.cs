@@ -23,10 +23,21 @@ public class RuntimeError : Exception
 
 public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 {
+    private class ControlException : Exception
+    {
+        public Token Token { get; } // break/continue
+
+        public ControlException(Token token)
+        {
+            Token = token;
+        }
+    }
+
+
+
     private readonly Environment _globalEnvironment = new();
 
     private Environment _environment;
-
 
     public Interpreter()
     {
@@ -58,6 +69,10 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         catch (RuntimeError runtimeError)
         {
             Console.WriteLine(runtimeError);
+        }
+        catch (ControlException controlException)
+        {
+            Console.WriteLine($"Unhandled control exception: {controlException.Token.Lexeme}");
         }
     }
 
@@ -112,9 +127,40 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     {
         while (IsTruthy(Evaluate(@while.Condition)))
         {
-            Execute(@while.Body);
+            try
+            {
+                Execute(@while.Body);
+            }
+            catch (ControlException controlException)
+            {
+                if (controlException.Token.Type == TokenType.BREAK)
+                {
+                    break;
+                }
+                else if (controlException.Token.Type == TokenType.CONTINUE)
+                {
+                    // Must execute the increment-expression of for-loops.
+                    if (@while.Body is Stmt.Block blockStatement &&
+                        blockStatement.Statements.Count == 2 &&
+                        blockStatement.Statements[1].Tag == "for_increment")
+                    {
+                        Execute(blockStatement.Statements[1]);
+                    }
+
+                    continue;
+                }
+                else
+                {
+                    throw new NotImplementedException("Invalid control exception");
+                }
+            }
         }
         return new Nothing();
+    }
+
+    public Nothing VisitControlStmt(Stmt.Control control)
+    {
+        throw new ControlException(control.Op);
     }
 
     //

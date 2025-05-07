@@ -43,10 +43,13 @@ public abstract partial class Expr
 [AstGen("Expression : Expr expr")]
 [AstGen("If         : Expr condition, Stmt thenBranch, Stmt? elseBranch")]
 [AstGen("While      : Expr condition, Stmt body")]
+[AstGen("Control    : Token op")] // break/continue
 [AstGen("Print      : Expr expr")]
 [AstGen("Var        : Token name, Expr? initializer")]
 public abstract partial class Stmt
 {
+    public string? Tag { get; set; }
+
     static Stmt()
     {
         _ = Stmt.SomeFunc(); // Go to definition to see output of source-generator.

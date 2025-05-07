@@ -114,4 +114,9 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
 
         return $"While ({cont}) {body} ";
     }
+
+    public string VisitControlStmt(Stmt.Control control)
+    {
+        return $"Control {control.Op.Lexeme}";
+    }
 }

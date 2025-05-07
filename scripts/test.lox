@@ -2,7 +2,27 @@
 //
 //
 
-while (false) for (;;) 1;
+print "before";
+
+for (var i = 0; i < 10; i = i + 1) {
+
+	print i;
+
+	if (i == 4) break;
+}
+
+print "middle";
+
+
+for (var i = 0; i < 10; i = i + 1) {
+
+	if (i == 4) continue;
+
+	print i;
+
+}
+
+print "after";
 
 // ...
 

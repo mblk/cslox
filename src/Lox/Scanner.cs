@@ -64,6 +64,11 @@ public class Scanner
             { "true",   TokenType.TRUE },
             { "var",    TokenType.VAR },
             { "while",  TokenType.WHILE },
+
+            //xxx
+            { "break",    TokenType.BREAK },
+            { "continue", TokenType.CONTINUE },
+            //xxx
         }
         .ToFrozenDictionary();
 

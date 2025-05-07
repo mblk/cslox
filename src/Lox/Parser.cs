@@ -20,6 +20,7 @@ public class Parser
     //              | ifStmt
     //              | whileStmt
     //              | forStmt
+    //              | controlStmt
     //              | printStmt
     //              | block
     //              ;
@@ -31,6 +32,8 @@ public class Parser
     // whileStmt    → "while" "(" expression ")" statement ;
     //
     // forStmt      → "for" "(" ( varDepl | exprStmt | ";" ) expression? ";" expression? ")" statement ;
+    //
+    // controlStmt  → ("break" | "continue") ";" ;
     //
     // printStmt    → "print" expression ";" ;
     //
@@ -182,6 +185,7 @@ public class Parser
         if (Match(TokenType.IF)) return IfStatement();
         if (Match(TokenType.WHILE)) return WhileStatement();
         if (Match(TokenType.FOR)) return ForStatement();
+        if (Match(TokenType.BREAK, TokenType.CONTINUE)) return ControlStatement();
         if (Match(TokenType.PRINT)) return PrintStatement();
         if (Match(TokenType.LEFT_BRACE)) return Block();
 
@@ -264,6 +268,9 @@ public class Parser
             body = new Stmt.Block([
                 body,
                 new Stmt.Expression(increment)
+                {
+                    Tag = "for_increment"
+                }
             ]);
         }
 
@@ -286,6 +293,14 @@ public class Parser
         }
 
         return body;
+    }
+
+    private Stmt ControlStatement()
+    {
+        Token op = Previous(); // break/continue
+        Consume(TokenType.SEMICOLON, "Expect ';' after control statement.");
+
+        return new Stmt.Control(op);
     }
 
     private Stmt PrintStatement()
