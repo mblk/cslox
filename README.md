@@ -9,10 +9,27 @@ This repository contains my implementation of the [lox language] following the b
 
 ## Status
 
-- [x] REPL
-- [x] Lexing
-- [ ] Parsing
-- [ ] ...
+- Phase 1: Tree walking interpreter
+    - [x] REPL
+    - [x] Lexing/Scanning
+    - [x] Parsing
+    - [x] Source generator for AST classes
+    - [x] Visitor pattern
+    - [x] Expression evaluation
+    - [x] Print/expression statements
+    - [x] Global variables
+    - [x] Block statements + environments/variable shadowing
+    - [x] Test runner
+    - [x] If statements
+    - [x] Logical operators
+    - [x] While/for loops
+    - [ ] Functions
+    - [ ] Semantic analysis
+    - [ ] Classes
+    - [ ] Inheritance
+    - [ ] ...
+- Phase 2: Bytecode & VM
+    - [ ] ...
 
 ## Building
 
