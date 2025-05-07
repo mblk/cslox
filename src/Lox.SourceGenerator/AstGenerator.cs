@@ -190,7 +190,7 @@ public class AstGenerator : IIncrementalGenerator
             var className = astClass.Name;
             var methodName = astClass.VisitMethodName;
 
-            sb.AppendLine($"        T {methodName}({className} {FirstCharacterToLower(className)});");
+            sb.AppendLine($"        T {methodName}({className} {EscapeKeywords(FirstCharacterToLower(className))});");
         }
 
         sb.AppendLine("    }");
@@ -259,6 +259,14 @@ public class AstGenerator : IIncrementalGenerator
 
     //    return $"{ns}.{classDeclaration.Identifier}";
     //}
+
+    private static string EscapeKeywords(string s)
+    {
+        if (SyntaxFacts.GetKeywordKind(s) == SyntaxKind.None)
+            return s;
+
+        return $"@{s}";
+    }
 
     private static string GetNamespace(SyntaxNode node)
     {

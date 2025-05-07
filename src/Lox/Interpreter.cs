@@ -1,6 +1,5 @@
 ﻿using Lox.Model;
 using System.Globalization;
-using System.Windows.Markup;
 
 namespace Lox;
 
@@ -42,8 +41,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         }
         catch (RuntimeError runtimeError)
         {
-            Console.WriteLine($"RuntimeError: {runtimeError.Message}");
-            //_ = runtimeError;
+            Console.WriteLine(runtimeError);
             return null;
         }
     }
@@ -59,7 +57,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         }
         catch (RuntimeError runtimeError)
         {
-            Console.WriteLine($"RuntimeError: {runtimeError.Message}");
+            Console.WriteLine(runtimeError);
         }
     }
 
@@ -94,6 +92,19 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
             : null;
 
         _environment.Define(var.Name.Lexeme, value);
+        return new Nothing();
+    }
+
+    public Nothing VisitIfStmt(Stmt.If @if)
+    {
+        if (IsTruthy(Evaluate(@if.Condition)))
+        {
+            Execute(@if.ThenBranch);
+        }
+        else if (@if.ElseBranch is not null)
+        {
+            Execute(@if.ElseBranch);
+        }
         return new Nothing();
     }
 
@@ -189,6 +200,8 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
 
 
+
+
     //
     // Utils
     //
@@ -221,7 +234,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         return expr.Accept(this);
     }
 
-    private static string Stringify(object? value)
+    private static string Stringify(object? value) // TODO move to extension/helper class?
     {
         if (value is null) return "nil";
         if (value is bool boolValue) return boolValue ? "true" : "false";

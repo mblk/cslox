@@ -93,4 +93,12 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
         }
     }
 
+    public string VisitIfStmt(Stmt.If @if)
+    {
+        var cond = @if.Condition.Accept(this);
+        var then = @if.ThenBranch.Accept(this);
+        var @else = @if.ThenBranch != null ? @if.ThenBranch.Accept(this) : "---";
+
+        return $"If ({cond}) {then} else {@else} ";
+    }
 }
