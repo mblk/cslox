@@ -69,6 +69,11 @@ public class Parser
         {
             Token = token;
         }
+
+        public override string ToString()
+        {
+            return $"[{Token.Line}] Error at '{Token.Lexeme}': {Message}";
+        }
     }
 
     private readonly IReadOnlyList<Token> _tokens;
@@ -378,9 +383,9 @@ public class Parser
 
     private static Exception Error(Token token, string message)
     {
-        Console.WriteLine($"Error: {message} at ...");
-        throw new ParseError(token, message);
-
+        var error = new ParseError(token, message);
+        Console.WriteLine(error.ToString());
+        throw error;
     }
 
 

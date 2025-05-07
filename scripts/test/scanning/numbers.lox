@@ -3,10 +3,10 @@
 .456
 123.
 
-// expect: NUMBER 123 123.0
-// expect: NUMBER 123.456 123.456
-// expect: DOT . null
-// expect: NUMBER 456 456.0
-// expect: NUMBER 123 123.0
-// expect: DOT . null
-// expect: EOF  null
+// expect: [1] NUMBER 123 123
+// expect: [2] NUMBER 123.456 123.456
+// expect: [3] DOT . null
+// expect: [3] NUMBER 456 456
+// expect: [4] NUMBER 123 123
+// expect: [4] DOT . null
+// expect: [13] EOF  null

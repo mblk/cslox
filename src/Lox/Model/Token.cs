@@ -1,4 +1,7 @@
-﻿namespace Lox.Model;
+﻿using System.Globalization;
+using System.Text;
+
+namespace Lox.Model;
 
 public enum TokenType
 {
@@ -22,4 +25,30 @@ public enum TokenType
     EOF
 }
 
-public record Token(TokenType Type, string Lexeme, object? Literal);
+public record Token(TokenType Type, string Lexeme, object? Literal, int Line)
+{
+    public override string ToString()
+    {
+        var sb = new StringBuilder();
+
+        sb.Append('[');
+        sb.Append(Line);
+        sb.Append(']');
+        sb.Append(' ');
+
+        sb.Append(Type);
+        sb.Append(' ');
+        sb.Append(Lexeme);
+        sb.Append(' ');
+
+        sb.Append(Literal switch
+        {
+            null => "null",
+            bool b => b ? "true" : "false",
+            double d => d.ToString(CultureInfo.InvariantCulture),
+            _ => Literal.ToString(),
+        });
+
+        return sb.ToString();
+    }
+}

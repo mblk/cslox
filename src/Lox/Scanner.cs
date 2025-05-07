@@ -76,7 +76,7 @@ public class Scanner
             ScanToken();
         }
 
-        _tokens.Add(new Token(TokenType.EOF, String.Empty, null));
+        _tokens.Add(new Token(TokenType.EOF, String.Empty, null, _line));
 
         return _tokens;
     }
@@ -86,42 +86,25 @@ public class Scanner
         _start = _current;
 
         var c = Advance();
-        //Console.WriteLine($"c: '{c}' {(int)c}");
-
         switch (c)
         {
+            // whitespace?
+            case ' ' or '\r' or '\t' or '\n':
+                break;
+
+            // single character token?
             case char _ when _singleCharacterTokens.TryGetValue(c, out var tokenType):
                 AddToken(tokenType);
                 break;
 
+            // 1-2 character token?
             case char _ when _oneOrTwoCharacterTokens.TryGetValue(c, out var x):
                 AddToken(Match(x.Item2) ? x.Item3 : x.Item1);
                 break;
 
+            // slash or comment?
             case '/':
-                // Start of comment?
-                if (Match('/'))
-                {
-                    // Consume rest of the line.
-                    while (Peek() != '\n' && !IsAtEnd()) // TODO similar to ScanString() > make nice method?
-                    {
-                        Advance();
-                    }
-                }
-                else
-                {
-                    AddToken(TokenType.SLASH);
-                }
-                break;
-
-            // whitespace?
-            case ' ':
-            case '\r':
-            case '\t':
-                break;
-
-            case '\n':
-                _line++; // TODO maybe move this to Advance?
+                ScanSlash();
                 break;
 
             // string literal?
@@ -140,14 +123,19 @@ public class Scanner
                 break;
 
             default:
-                Console.WriteLine($"Unexpected character: {c} {(int)c} at {_current}");
+                Error($"Unexpected character: '{c}' ({(int)c})");
                 break;
-        }   
+        }
+    }
+
+    private void Error(string message)
+    {
+        Console.WriteLine($"[{_line}] Error: {message}");
     }
 
     private void AddToken(TokenType tokenType, object? literal = null)
     {
-        _tokens.Add(new Token(tokenType, GetLexeme(), literal));
+        _tokens.Add(new Token(tokenType, GetLexeme(), literal, _line));
     }
 
     private string GetLexeme()
@@ -167,7 +155,11 @@ public class Scanner
     private char Advance()
     {
         var c = _source[_current];
+
         _current++;
+
+        if (c == '\n') _line++;
+
         return c;
     }
 
@@ -211,25 +203,44 @@ public class Scanner
         return _source[_current + 1];
     }
 
-    private void ScanString()
+    private void AdvanceTo(char terminator)
     {
-        // Consume everything to the closing quote.
-        while (Peek() != '"' && !IsAtEnd())
+        while (Peek() != terminator && !IsAtEnd())
         {
-            if (Peek() == '\n')
-                _line++; // TODO maybe move this to Advance?
-
             Advance();
         }
 
+        // Consume terminator.
+        if (!IsAtEnd())
+        {
+            Advance();
+        }
+    }
+
+    private void ScanSlash()
+    {
+        // Start of comment?
+        if (Match('/'))
+        {
+            // Consume rest of the line.
+            AdvanceTo('\n');
+        }
+        else
+        {
+            AddToken(TokenType.SLASH);
+        }
+    }
+
+    private void ScanString()
+    {
+        // Consume everything to the closing quote.
+        AdvanceTo('"');
+
         if (IsAtEnd())
         {
-            Console.WriteLine("Unterminated string.");
+            Error("Unterminated string.");
             return;
         }
-
-        // Consume closing quote.
-        _ = Advance();
 
         // Get literal without quotes.
         var value = _source[(_start + 1) .. (_current - 1)];
@@ -259,7 +270,7 @@ public class Scanner
         }
         else
         {
-            Console.WriteLine($"Invalid number: '{lexeme}'");
+            Error("Invalid number.");
         }
     }
 

@@ -1,6 +1,6 @@
 ""
 "string"
 
-// expect: STRING "" 
-// expect: STRING "string" string
-// expect: EOF  null
+// expect: [1] STRING "" 
+// expect: [2] STRING "string" string
+// expect: [6] EOF  null

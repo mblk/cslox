@@ -4,39 +4,86 @@ public static class Program
 {
     public static int Main(string[] args)
     {
-        Console.WriteLine($"Hello LOX!");
+        // TODO make/use generic arg-parser or keep it like this?
 
-        if (args.Length == 1)
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+        if (args.Length == 2 && args[0] == "-scan")
         {
-            RunFile(args[0]);
-            return 0;
+            return ScanFile(args[1]);
+        }
+        else if (args.Length == 2 && args[0] == "-parse")
+        {
+            return ParseFile(args[1]);
+        }
+        else if (args.Length == 1)
+        {
+            return RunFile(args[0]);
         }
         else if (args.Length == 0)
         {
-            RunRepl();
-            return 0;
+            return RunRepl();
         }
         else
         {
-            PrintUsage();
-            return -1;
+            return PrintUsage();
         }
     }
 
-    private static void PrintUsage()
+    private static int PrintUsage()
     {
-        Console.WriteLine($"Usage: cslox [script]");
+        Console.WriteLine($"Hello LOX!");
+        Console.WriteLine($"");
+        Console.WriteLine($"Usage: cslox [args] [filename]");
+        Console.WriteLine($"");
+        Console.WriteLine($"Optional args:");
+        Console.WriteLine($"  -scan     Scan file and print list of tokens.");
+        Console.WriteLine($"  -parse    Scan and parse file and print AST of statements.");
+        return -1;
     }
 
-    private static void RunFile(string fileName)
+    private static int ScanFile(string fileName)
+    {
+        var source = File.ReadAllText(fileName);
+        var scanner = new Scanner(source);
+        var tokens = scanner.ScanTokens().ToArray();
+
+        foreach (var token in tokens)
+        {
+            Console.WriteLine(token);
+        }
+
+        return 0;
+    }
+
+    private static int ParseFile(string fileName)
+    {
+        var source = File.ReadAllText(fileName);
+        var scanner = new Scanner(source);
+        var tokens = scanner.ScanTokens().ToArray();
+        var parser = new Parser(tokens);
+        var statements = parser.Parse();
+
+        foreach (var statement in statements)
+        {
+            var s = statement.Accept(new PrintVisitor());
+            Console.WriteLine($"Statement AST: {s}");
+        }
+
+        return 0;
+    }
+
+    private static int RunFile(string fileName)
     {
         var source = File.ReadAllText(fileName);
         var lox = new Lox();
 
         lox.Run(source);
+
+        return 0;
     }
 
-    private static void RunRepl()
+    private static int RunRepl()
     {
         var lox = new Lox();
 
@@ -48,6 +95,8 @@ public static class Program
 
             lox.Run(input);
         }
+
+        return 0;
     }
 }
 
@@ -67,23 +116,6 @@ public class Lox
         var parser = new Parser(tokens);
         var statements = parser.Parse();
 
-        foreach (var statement in statements)
-        {
-            var s = statement.Accept(new PrintVisitor());
-            Console.WriteLine($"Statement AST: {s}");
-        }
-
-        // TODO abort if error occurred
-
         _interpreter.Interpret(statements);
-
-        //if (expr is not null)
-        //{
-        //    var s = expr.Accept(new PrintVisitor());
-        //    Console.WriteLine($"AST: {s}");
-
-        //    var value = _interpreter.Interpret(expr);
-        //    Console.WriteLine($"Result: {value} ({value?.GetType().Name})");
-        //}
     }
 }

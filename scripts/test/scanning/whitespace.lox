@@ -5,8 +5,8 @@ space    tabs				newlines
 
 end
 
-// expect: IDENTIFIER space null
-// expect: IDENTIFIER tabs null
-// expect: IDENTIFIER newlines null
-// expect: IDENTIFIER end null
-// expect: EOF  null
+// expect: [1] IDENTIFIER space null
+// expect: [1] IDENTIFIER tabs null
+// expect: [1] IDENTIFIER newlines null
+// expect: [6] IDENTIFIER end null
+// expect: [13] EOF  null

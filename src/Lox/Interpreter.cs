@@ -1,4 +1,6 @@
 ﻿using Lox.Model;
+using System.Globalization;
+using System.Windows.Markup;
 
 namespace Lox;
 
@@ -12,6 +14,11 @@ public class RuntimeError : Exception
         : base(message)
     {
         Token = token;
+    }
+
+    public override string ToString()
+    {
+        return $"RuntimeError: {Message}";
     }
 }
 
@@ -75,7 +82,8 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     public Nothing VisitPrintStmt(Stmt.Print print)
     {
         object? value = Evaluate(print.Expr);
-        Console.WriteLine($"{value}"); // TODO stringify
+        var s = Stringify(value);
+        Console.WriteLine(s);
         return new Nothing();
     }
 
@@ -144,7 +152,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
             if (left is string leftString && right is string rightString)
                 return leftString + rightString;
 
-            throw new RuntimeError(binary.Op, "Operands must be numbers or strings.");
+            throw new RuntimeError(binary.Op, "Operands must be two numbers or two strings.");
         }
 
         T processNumbers<T>(Func<double, double, T> func)
@@ -213,6 +221,19 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         return expr.Accept(this);
     }
 
+    private static string Stringify(object? value)
+    {
+        if (value is null) return "nil";
+        if (value is bool boolValue) return boolValue ? "true" : "false";
+
+        if (value is double doubleValue)
+        {
+            return doubleValue.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return value.ToString() ?? "???";
+    }
+
     private static bool IsTruthy(object? value) // TODO move to extension/helper class?
     {
         // falsey: nil, false
@@ -228,6 +249,11 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     {
         if (a is null && b is null) return true;
         if (a is null) return false;
+
+        if (a is double doubleA && b is double doubleB)
+        {
+            return doubleA == doubleB;
+        }
 
         return a.Equals(b);
     }

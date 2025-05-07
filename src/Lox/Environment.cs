@@ -35,7 +35,7 @@ public class Environment
             return;
         }
 
-        throw new RuntimeError(token, $"Undefined variable '{name}'");
+        throw new RuntimeError(token, $"Undefined variable '{name}'.");
     }
 
     public object? Get(string name, Token token)
@@ -48,6 +48,6 @@ public class Environment
             return _enclosing.Get(name, token);
         }
 
-        throw new RuntimeError(token, $"Undefined variable '{name}'");
+        throw new RuntimeError(token, $"Undefined variable '{name}'.");
     }
 }
