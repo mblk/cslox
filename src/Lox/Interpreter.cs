@@ -108,6 +108,15 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         return new Nothing();
     }
 
+    public Nothing VisitWhileStmt(Stmt.While @while)
+    {
+        while (IsTruthy(Evaluate(@while.Condition)))
+        {
+            Execute(@while.Body);
+        }
+        return new Nothing();
+    }
+
     //
     // Expression visitor
     //

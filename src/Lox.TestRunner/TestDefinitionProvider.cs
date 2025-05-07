@@ -314,8 +314,8 @@ public static class TestDefinitionProvider
         //("while", "fun_in_body", TestCaseType.Running),
         //("while", "return_closure", TestCaseType.Running),
         //("while", "return_inside", TestCaseType.Running),
-        //("while", "syntax", TestCaseType.Running),
-        //("while", "var_in_body", TestCaseType.Running),
+        ("while", "syntax", TestCaseType.Running),
+        ("while", "var_in_body", TestCaseType.Running),
     ];
 
     public static TestDefinition GetTestDefinition()

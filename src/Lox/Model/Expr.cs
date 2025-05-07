@@ -42,6 +42,7 @@ public abstract partial class Expr
 [AstGen("Block      : IReadOnlyList<Stmt> statements")]
 [AstGen("Expression : Expr expr")]
 [AstGen("If         : Expr condition, Stmt thenBranch, Stmt? elseBranch")]
+[AstGen("While      : Expr condition, Stmt body")]
 [AstGen("Print      : Expr expr")]
 [AstGen("Var        : Token name, Expr? initializer")]
 public abstract partial class Stmt

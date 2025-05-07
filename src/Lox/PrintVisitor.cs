@@ -107,5 +107,11 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
         return $"If ({cond}) {then} else {@else} ";
     }
 
+    public string VisitWhileStmt(Stmt.While @while)
+    {
+        var cont = @while.Condition.Accept(this);
+        var body = @while.Body.Accept(this);
 
+        return $"While ({cont}) {body} ";
+    }
 }

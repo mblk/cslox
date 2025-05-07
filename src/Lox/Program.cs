@@ -1,4 +1,6 @@
-﻿namespace Lox;
+﻿using System.Diagnostics;
+
+namespace Lox;
 
 public static class Program
 {
@@ -6,27 +8,38 @@ public static class Program
     {
         // TODO make/use generic arg-parser or keep it like this?
 
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        try
+        {
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-        if (args.Length == 2 && args[0] == "-scan")
-        {
-            return ScanFile(args[1]);
+            if (args.Length == 2 && args[0] == "-scan")
+            {
+                return ScanFile(args[1]);
+            }
+            else if (args.Length == 2 && args[0] == "-parse")
+            {
+                return ParseFile(args[1]);
+            }
+            else if (args.Length == 1)
+            {
+                return RunFile(args[0]);
+            }
+            else if (args.Length == 0)
+            {
+                return RunRepl();
+            }
+            else
+            {
+                return PrintUsage();
+            }
         }
-        else if (args.Length == 2 && args[0] == "-parse")
+        finally
         {
-            return ParseFile(args[1]);
-        }
-        else if (args.Length == 1)
-        {
-            return RunFile(args[0]);
-        }
-        else if (args.Length == 0)
-        {
-            return RunRepl();
-        }
-        else
-        {
-            return PrintUsage();
+            if (Debugger.IsAttached)
+            {
+                Console.WriteLine("Press any key to quit ...");
+                Console.ReadKey();
+            }
         }
     }
 
