@@ -33,8 +33,12 @@ public class Parser
     // expression   → assignment ;
     //
     // assignment   → IDENTIFIER "=" assignment
-    //              | equality
+    //              | logic_or
     //              ;
+    //
+    // logic_or     → logic_and ( "or" logic_and )* ;
+    //
+    // logic_and    → equality ( "and" equality )* ;
     //
     // equality     → comparison (( "!=" | "==" ) comparison )* ;
     //
@@ -234,8 +238,8 @@ public class Parser
 
     private Expr Assignment()
     {
-        // Parse potential IDENTIFIER as if it were an equality-expression.
-        Expr expr = Equality();
+        // Parse potential IDENTIFIER as if it were an ...-expression.
+        Expr expr = LogicOr();
 
         // Assignment?
         if (Match(TokenType.EQUAL))
@@ -252,6 +256,36 @@ public class Parser
             {
                 _ = Error(equals, "Invalid assignment target."); // Not throwing
             }
+        }
+
+        return expr;
+    }
+
+    private Expr LogicOr()
+    {
+        Expr expr = LogicAnd();
+
+        while (Match(TokenType.OR))
+        {
+            Token op = Previous();
+            Expr right = LogicAnd();
+
+            expr = new Expr.Logical(expr, op, right);
+        }
+
+        return expr;
+    }
+
+    private Expr LogicAnd()
+    {
+        Expr expr = Equality();
+
+        while (Match(TokenType.AND))
+        {
+            Token op = Previous();
+            Expr right = Equality();
+
+            expr = new Expr.Logical(expr, op, right);
         }
 
         return expr;

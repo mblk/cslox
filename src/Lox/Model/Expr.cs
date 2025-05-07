@@ -28,6 +28,7 @@
 [AstGen("Binary   : Expr left, Token op, Expr right")]
 [AstGen("Grouping : Expr expression")]
 [AstGen("Literal  : object? value")]
+[AstGen("Logical  : Expr left, Token op, Expr right")]
 [AstGen("Unary    : Token op, Expr right")]
 [AstGen("Variable : Token name")]
 public abstract partial class Expr

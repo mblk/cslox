@@ -176,10 +176,10 @@ public static class TestDefinitionProvider
         //("limit", "too_many_locals", TestCaseType.Running),
         //("limit", "too_many_upvalues", TestCaseType.Running),
 
-        //("logical_operator", "and", TestCaseType.Running),
-        //("logical_operator", "and_truth", TestCaseType.Running),
-        //("logical_operator", "or", TestCaseType.Running),
-        //("logical_operator", "or_truth", TestCaseType.Running),
+        ("logical_operator", "and", TestCaseType.Running),
+        ("logical_operator", "and_truth", TestCaseType.Running),
+        ("logical_operator", "or", TestCaseType.Running),
+        ("logical_operator", "or_truth", TestCaseType.Running),
 
         //("method", "arity", TestCaseType.Running),
         //("method", "empty_block", TestCaseType.Running),

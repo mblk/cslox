@@ -15,6 +15,11 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
         return FormatAndAcceptChilds($"Binary {binary.Op.Lexeme}", binary.Left, binary.Right);
     }
 
+    public string VisitLogicalExpr(Expr.Logical logical)
+    {
+        return FormatAndAcceptChilds($"Logical {logical.Op.Lexeme}", logical.Left, logical.Right);
+    }
+
     public string VisitGroupingExpr(Expr.Grouping grouping)
     {
         return FormatAndAcceptChilds($"Grouping", grouping.Expression);
@@ -101,4 +106,6 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
 
         return $"If ({cond}) {then} else {@else} ";
     }
+
+
 }

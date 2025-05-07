@@ -193,6 +193,31 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         };
     }
 
+    public object? VisitLogicalExpr(Expr.Logical logical)
+    {
+        object? leftValue = Evaluate(logical.Left);
+        bool leftThruthy = IsTruthy(leftValue);
+
+        // short circuit?
+        switch (logical.Op.Type)
+        {
+            case TokenType.AND:
+                if (!leftThruthy)
+                    return leftValue;
+                break;
+
+            case TokenType.OR:
+                if (leftThruthy)
+                    return leftValue;
+                break;
+
+            default:
+                throw new NotImplementedException("Invalid op in VisitLogicalExpr");
+        }
+
+        return Evaluate(logical.Right);
+    }
+
     public object? VisitVariableExpr(Expr.Variable variable)
     {
         return _environment.Get(variable.Name.Lexeme, variable.Name);
