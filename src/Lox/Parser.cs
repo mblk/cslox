@@ -1,5 +1,4 @@
 ﻿using Lox.Model;
-using System.Linq.Expressions;
 
 namespace Lox;
 
@@ -60,6 +59,16 @@ public class Parser
     // * or +       while or for loop
     // ?            if statement
 
+    public record ParseExpressionResult(Expr? Expression, IReadOnlyList<ParseError> Errors)
+    {
+        public bool Success => Expression is not null && Errors.Count == 0;
+    }
+
+    public record ParseStatementsResult(IReadOnlyList<Stmt> Statements, IReadOnlyList<ParseError> Errors)
+    {
+        public bool Success => Statements.Count > 0 && Errors.Count == 0;
+    }
+
     public class ParseError : Exception
     {
         public Token Token { get; }
@@ -78,6 +87,8 @@ public class Parser
 
     private readonly IReadOnlyList<Token> _tokens;
 
+    private readonly List<ParseError> _errors = [];
+
     private int _current = 0;
 
     public Parser(IReadOnlyList<Token> tokens)
@@ -85,32 +96,39 @@ public class Parser
         _tokens = tokens;
     }
 
-    //public Expr? ParseExpr()
-    //{
-    //    try
-    //    {
-    //        return Expression();
-    //    }
-    //    catch (ParseError parseError)
-    //    {
-    //        _ = parseError;
-    //        return null;
-    //    }
-    //}
+    public ParseExpressionResult ParseExpression()
+    {
+        try
+        {
+            var expr = Expression();
 
-    public IReadOnlyList<Stmt> Parse()
+            // Check if all tokens were consumed.
+            if (!IsAtEnd())
+            {
+                Error("Found extra tokens after expression.");
+            }
+
+            return new ParseExpressionResult(expr, _errors.ToArray());
+        }
+        catch (ParseError) // Some parse-errors are thrown, others are not.
+        {
+            return new ParseExpressionResult(null, _errors.ToArray());
+        }
+    }
+
+    public ParseStatementsResult ParseStatements()
     {
         var statements = new List<Stmt>();
 
         while (!IsAtEnd())
         {
-            var stmt = Declaration();
+            var stmt = Declaration(); // Catches all parse-errors.
             if (stmt is null) continue;
 
             statements.Add(stmt);
         }
 
-        return statements;
+        return new ParseStatementsResult(statements.ToArray(), _errors.ToArray());
     }
 
     private Stmt? Declaration()
@@ -381,11 +399,11 @@ public class Parser
         return Error(Peek(), message);
     }
 
-    private static Exception Error(Token token, string message)
+    private Exception Error(Token token, string message)
     {
         var error = new ParseError(token, message);
-        Console.WriteLine(error.ToString());
-        throw error;
+        _errors.Add(error);
+        return error;
     }
 
 
@@ -395,7 +413,10 @@ public class Parser
     /// </summary>
     private void Synchronize()
     {
-        // Consume current token
+        if (IsAtEnd())
+            return;
+
+        // Consume current token (which caused the error)
         Advance();
 
         while (!IsAtEnd())

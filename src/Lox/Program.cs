@@ -46,9 +46,14 @@ public static class Program
     {
         var source = File.ReadAllText(fileName);
         var scanner = new Scanner(source);
-        var tokens = scanner.ScanTokens().ToArray();
+        var scanResult = scanner.ScanTokens();
 
-        foreach (var token in tokens)
+        foreach (var scanError in scanResult.Errors)
+        {
+            Console.WriteLine(scanError);
+        }
+
+        foreach (var token in scanResult.Tokens)
         {
             Console.WriteLine(token);
         }
@@ -60,11 +65,22 @@ public static class Program
     {
         var source = File.ReadAllText(fileName);
         var scanner = new Scanner(source);
-        var tokens = scanner.ScanTokens().ToArray();
-        var parser = new Parser(tokens);
-        var statements = parser.Parse();
+        var scanResult = scanner.ScanTokens();
 
-        foreach (var statement in statements)
+        foreach (var scanError in scanResult.Errors)
+        {
+            Console.WriteLine(scanError);
+        }
+
+        var parser = new Parser(scanResult.Tokens);
+        var parseResult = parser.ParseStatements();
+
+        foreach (var parseError in parseResult.Errors)
+        {
+            Console.WriteLine(parseError);
+        }
+
+        foreach (var statement in parseResult.Statements)
         {
             var s = statement.Accept(new PrintVisitor());
             Console.WriteLine($"Statement AST: {s}");
@@ -85,7 +101,7 @@ public static class Program
 
     private static int RunRepl()
     {
-        var lox = new Lox();
+        var lox = new Lox(replMode: true);
 
         while (true)
         {
@@ -103,19 +119,53 @@ public static class Program
 public class Lox
 {
     private readonly Interpreter _interpreter = new();
+    private readonly bool _replMode;
 
-    public Lox()
+    public Lox(bool replMode = false)
     {
+        _replMode = replMode;
     }
 
     public void Run(string source)
     {
         var scanner = new Scanner(source);
-        var tokens = scanner.ScanTokens().ToArray();
+        var scanResult = scanner.ScanTokens();
 
-        var parser = new Parser(tokens);
-        var statements = parser.Parse();
+        foreach (var scanError in scanResult.Errors)
+        {
+            Console.WriteLine(scanError);
+        }
 
-        _interpreter.Interpret(statements);
+        // Try expressions first.
+        if (_replMode)
+        {
+            var parser = new Parser(scanResult.Tokens);
+            var parseExprResult = parser.ParseExpression();
+            if (parseExprResult.Success)
+            {
+                var value = _interpreter.Interpret(parseExprResult.Expression!);
+
+                Console.WriteLine($">>> {value}");
+                return;
+            }
+        }
+
+        // Statements then.
+        {
+            var parser = new Parser(scanResult.Tokens);
+            var parseResult = parser.ParseStatements();
+
+            foreach (var parseError in parseResult.Errors)
+            {
+                Console.WriteLine(parseError);
+            }
+
+            if (!scanResult.Success || !parseResult.Success)
+            {
+                return;
+            }
+
+            _interpreter.Interpret(parseResult.Statements);
+        }
     }
 }

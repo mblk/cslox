@@ -34,19 +34,19 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         _environment = _globalEnvironment;
     }
 
-    //public object? Interpret(Expr expr)
-    //{
-    //    try
-    //    {
-    //        return Evaluate(expr);
-    //    }
-    //    catch (RuntimeError runtimeError)
-    //    {
-    //        Console.WriteLine($"RuntimeError: {runtimeError.Message}");
-    //        //_ = runtimeError;
-    //        return null;
-    //    }
-    //}
+    public object? Interpret(Expr expr)
+    {
+        try
+        {
+            return Evaluate(expr);
+        }
+        catch (RuntimeError runtimeError)
+        {
+            Console.WriteLine($"RuntimeError: {runtimeError.Message}");
+            //_ = runtimeError;
+            return null;
+        }
+    }
 
     public void Interpret(IReadOnlyList<Stmt> statements)
     {

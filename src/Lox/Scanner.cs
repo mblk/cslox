@@ -6,6 +6,19 @@ namespace Lox;
 
 public class Scanner
 {
+    public record ScanResult(IReadOnlyList<Token> Tokens, IReadOnlyList<ScanError> Errors)
+    {
+        public bool Success => Tokens.Count > 0 && Errors.Count == 0;
+    }
+
+    public record ScanError(int Line, string Message)
+    {
+        public override string ToString()
+        {
+            return $"[{Line}] Error: {Message}";
+        }
+    }
+
     private readonly FrozenDictionary<char, TokenType> _singleCharacterTokens
         = new Dictionary<char, TokenType>()
         {
@@ -35,28 +48,29 @@ public class Scanner
     private readonly FrozenDictionary<string, TokenType> _keywords
         = new Dictionary<string, TokenType>()
         {
-            { "and", TokenType.AND },
-            { "class", TokenType.CLASS },
-            { "else", TokenType.ELSE },
-            { "false", TokenType.FALSE },
-            { "fun", TokenType.FUN },
-            { "for", TokenType.FOR },
-            { "if", TokenType.IF },
-            { "nil", TokenType.NIL },
-            { "or", TokenType.OR },
-            { "print", TokenType.PRINT },
+            { "and",    TokenType.AND },
+            { "class",  TokenType.CLASS },
+            { "else",   TokenType.ELSE },
+            { "false",  TokenType.FALSE },
+            { "fun",    TokenType.FUN },
+            { "for",    TokenType.FOR },
+            { "if",     TokenType.IF },
+            { "nil",    TokenType.NIL },
+            { "or",     TokenType.OR },
+            { "print",  TokenType.PRINT },
             { "return", TokenType.RETURN },
-            { "super", TokenType.SUPER },
-            { "this", TokenType.THIS },
-            { "true", TokenType.TRUE },
-            { "var", TokenType.VAR },
-            { "while", TokenType.WHILE },
+            { "super",  TokenType.SUPER },
+            { "this",   TokenType.THIS },
+            { "true",   TokenType.TRUE },
+            { "var",    TokenType.VAR },
+            { "while",  TokenType.WHILE },
         }
         .ToFrozenDictionary();
 
     private readonly string _source;
 
     private readonly List<Token> _tokens = [];
+    private readonly List<ScanError> _errors = [];
 
     private int _start = 0;
     private int _current = 0;
@@ -67,10 +81,8 @@ public class Scanner
         _source = source;
     }
 
-    public IEnumerable<Token> ScanTokens()
+    public ScanResult ScanTokens()
     {
-        _tokens.Clear();
-
         while (!IsAtEnd())
         {
             ScanToken();
@@ -78,7 +90,7 @@ public class Scanner
 
         _tokens.Add(new Token(TokenType.EOF, String.Empty, null, _line));
 
-        return _tokens;
+        return new ScanResult(_tokens.ToArray(), _errors.ToArray());
     }
 
     private void ScanToken()
@@ -130,7 +142,7 @@ public class Scanner
 
     private void Error(string message)
     {
-        Console.WriteLine($"[{_line}] Error: {message}");
+        _errors.Add(new ScanError(_line, message));
     }
 
     private void AddToken(TokenType tokenType, object? literal = null)
