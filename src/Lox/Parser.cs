@@ -11,16 +11,24 @@ public class Parser
     // program      → declaration* EOF ;
     //
     // declaration  → varDecl
+    //              | funDecl
     //              | statement
     //              ;
     //
     // varDecl      → "var" IDENTIFIER ( "=" expression )? ";" ;
+    //
+    // funDecl      → "fun" function ;
+    //
+    // function     → IDENTIFIER "(" parameters? ")" block ;
+    //
+    // parameters   → IDENTIFIER ( "," IDENTIFIER )* ;
     //
     // statement    → exprStmt
     //              | ifStmt
     //              | whileStmt
     //              | forStmt
     //              | controlStmt
+    //              | returnStmt
     //              | printStmt
     //              | block
     //              ;
@@ -34,6 +42,8 @@ public class Parser
     // forStmt      → "for" "(" ( varDepl | exprStmt | ";" ) expression? ";" expression? ")" statement ;
     //
     // controlStmt  → ("break" | "continue") ";" ;
+    //
+    // returnStmt   → "return" expression? ";" ;
     //
     // printStmt    → "print" expression ";" ;
     //
@@ -58,8 +68,12 @@ public class Parser
     // factor       → unary (( "/" | "*" ) unary )* ;
     //
     // unary        → ( "!" | "-" ) unary
-    //              | primary
+    //              | call
     //              ;
+    //
+    // call         → primary ( "(" arguments? ")" )* ;
+    //
+    // arguments    → expression ( "," expression )* ;
     //
     // primary      → "true" | "false" | "nil"
     //              | NUMBER | STRING
@@ -151,8 +165,8 @@ public class Parser
     {
         try
         {
-            if (Match(TokenType.VAR))
-                return VarDeclaration();
+            if (Match(TokenType.VAR)) return VarDeclaration();
+            if (Match(TokenType.FUN)) return FunDeclaration("function");
 
             return Statement();
         }
@@ -180,12 +194,42 @@ public class Parser
         return new Stmt.Var(name, initializer);
     }
 
+    private Stmt FunDeclaration(string kind)
+    {
+        Token name = Consume(TokenType.IDENTIFIER, $"Expect {kind} name.");
+
+        Consume(TokenType.LEFT_PAREN, $"Expect '(' after {kind} name.");
+
+        var parameters = new List<Token>();
+        if (!Check(TokenType.RIGHT_PAREN))
+        {
+            do
+            {
+                if (parameters.Count >= 255)
+                {
+                    Error("Can't have more than 255 parameters.");
+                }
+                var p = Consume(TokenType.IDENTIFIER, "Expect parameter name.");
+                parameters.Add(p);
+            }
+            while (Match(TokenType.COMMA));
+        }
+
+        Consume(TokenType.RIGHT_PAREN, "Expect ')' after parameters.");
+
+        Consume(TokenType.LEFT_BRACE, $"Expect '{{' before {kind} body.");
+        IReadOnlyList<Stmt> body = BlockStatements();
+
+        return new Stmt.Function(name, parameters, body);
+    }
+
     private Stmt Statement()
     {
         if (Match(TokenType.IF)) return IfStatement();
         if (Match(TokenType.WHILE)) return WhileStatement();
         if (Match(TokenType.FOR)) return ForStatement();
         if (Match(TokenType.BREAK, TokenType.CONTINUE)) return ControlStatement();
+        if (Match(TokenType.RETURN)) return ReturnStatement();
         if (Match(TokenType.PRINT)) return PrintStatement();
         if (Match(TokenType.LEFT_BRACE)) return Block();
 
@@ -301,6 +345,19 @@ public class Parser
         Consume(TokenType.SEMICOLON, "Expect ';' after control statement.");
 
         return new Stmt.Control(op);
+    }
+
+    private Stmt ReturnStatement()
+    {
+        Token keyword = Previous();
+        Expr? expr = null;
+        if (!Check(TokenType.SEMICOLON))
+        {
+            expr = Expression();
+        }
+
+        Consume(TokenType.SEMICOLON, "Expect ';' after return value.");
+        return new Stmt.Return(keyword, expr);
     }
 
     private Stmt PrintStatement()
@@ -463,7 +520,38 @@ public class Parser
             return new Expr.Unary(op, right);
         }
 
-        return Primary();
+        return Call();
+    }
+
+    private Expr Call()
+    {
+        Expr expr = Primary();
+
+        while (Match(TokenType.LEFT_PAREN))
+        {
+            var arguments = new List<Expr>();
+
+            // no args?
+            if (!Check(TokenType.RIGHT_PAREN))
+            {
+                do
+                {
+                    if (arguments.Count >= 255)
+                    {
+                        Error("Can't have more than 255 arguments.");
+                    }
+
+                    arguments.Add(Expression());
+                }
+                while (Match(TokenType.COMMA));
+            }
+
+            var tokenForError = Consume(TokenType.RIGHT_PAREN, "Expect ')' after arguments.");
+
+            expr = new Expr.Call(expr, tokenForError, arguments);
+        }
+
+        return expr;
     }
 
     private Expr Primary()

@@ -40,6 +40,11 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
         return $"Variable {variable.Name.Lexeme}";
     }
 
+    public string VisitCallExpr(Expr.Call call)
+    {
+        return $"Call {call.Callee.Accept(this)}({String.Join(", ", call.Arguments.Select(x => x.Accept(this)))})";
+    }
+
     private string FormatAndAcceptChilds(string name, params Expr[] exprs)
     {
         var sb = new StringBuilder();
@@ -118,5 +123,28 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
     public string VisitControlStmt(Stmt.Control control)
     {
         return $"Control {control.Op.Lexeme}";
+    }
+
+    public string VisitFunctionStmt(Stmt.Function function)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"Function {function.Name.Lexeme} ({String.Join(", ", function.Parms.Select(p => p.Lexeme))}) {{");
+        foreach (var stmt in function.Body)
+        {
+            sb.Append("    "); // TODO must indent every line
+            sb.AppendLine(stmt.Accept(this));
+        }
+        sb.AppendLine("}");
+
+        return sb.ToString();
+    }
+
+    public string VisitReturnStmt(Stmt.Return @return)
+    {
+        if (@return.Expr is null)
+            return "Return; ";
+
+        return $"Return {@return.Expr.Accept(this)}; ";
     }
 }

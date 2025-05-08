@@ -31,6 +31,7 @@
 [AstGen("Logical  : Expr left, Token op, Expr right")]
 [AstGen("Unary    : Token op, Expr right")]
 [AstGen("Variable : Token name")]
+[AstGen("Call     : Expr callee, Token paren, IReadOnlyList<Expr> arguments")]
 public abstract partial class Expr
 {
     static Expr()
@@ -46,6 +47,11 @@ public abstract partial class Expr
 [AstGen("Control    : Token op")] // break/continue
 [AstGen("Print      : Expr expr")]
 [AstGen("Var        : Token name, Expr? initializer")]
+[AstGen("Function   : Token name, IReadOnlyList<Token> parms, IReadOnlyList<Stmt> body")]
+// TODO maybe store body as single statement like if/etc ?
+//      -> difference might be 1 vs 2 environments (1 created by function call, 1 created by block) ?
+[AstGen("Return     : Token token, Expr? expr")]
+
 public abstract partial class Stmt
 {
     public string? Tag { get; set; }

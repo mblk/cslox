@@ -1,4 +1,5 @@
 ﻿using Lox.Model;
+using System.Diagnostics;
 using System.Globalization;
 
 namespace Lox;
@@ -21,6 +22,13 @@ public class RuntimeError : Exception
     }
 }
 
+public interface ILoxCallable
+{
+    int Arity { get; }
+
+    object? Call(Interpreter interpreter, IReadOnlyList<object?> args);
+}
+
 public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 {
     private class ControlException : Exception
@@ -33,15 +41,97 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         }
     }
 
+    private class ReturnException : Exception
+    {
+        public object? Value { get; }
 
+        public ReturnException(object? value)
+        {
+            Value = value;
+        }
+    }
+
+    private class NativeFunction : ILoxCallable
+    {
+        private readonly string _name;
+        private readonly Func<IReadOnlyList<object?>, object?> _func;
+
+        public int Arity { get; }
+
+        public NativeFunction(string name, int arity, Func<IReadOnlyList<object?>, object?> func)
+        {
+            _name = name;
+            Arity = arity;
+            _func = func;
+        }
+
+        public object? Call(Interpreter interpreter, IReadOnlyList<object?> args)
+        {
+            return _func(args);
+        }
+
+        public override string ToString()
+        {
+            return $"<native fn {_name}>";
+        }
+    }
+
+    private class LoxFunction : ILoxCallable
+    {
+        private readonly Stmt.Function _function;
+        private readonly Environment _closure;
+
+        public int Arity { get; }
+
+        public LoxFunction(Stmt.Function function, Environment closure)
+        {
+            _function = function;
+            _closure = closure;
+            Arity = _function.Parms.Count;
+        }
+
+        public object? Call(Interpreter interpreter, IReadOnlyList<object?> args)
+        {
+            Debug.Assert(_function.Parms.Count == args.Count);
+
+            var environment = new Environment(_closure);
+
+            for (var i = 0; i<_function.Parms.Count; i++)
+            {
+                environment.Define(_function.Parms[i].Lexeme, args[i]);
+            }
+
+            try
+            {
+                interpreter.ExecuteBlock(_function.Body, environment);
+            }
+            catch (ReturnException returnException)
+            {
+                return returnException.Value;
+            }
+
+            return null;
+        }
+
+        public override string ToString()
+        {
+            return $"<fn {_function.Name.Lexeme}>";
+        }
+    }
 
     private readonly Environment _globalEnvironment = new();
-
     private Environment _environment;
+    private readonly DateTime _startTime;
 
     public Interpreter()
     {
         _environment = _globalEnvironment;
+        _startTime = Process.GetCurrentProcess().StartTime;
+
+        _globalEnvironment.Define("clock", new NativeFunction("clock", 0, (args) =>
+        {
+            return (DateTime.Now - _startTime).TotalSeconds;
+        }));
     }
 
     public object? Interpret(Expr expr)
@@ -163,6 +253,22 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         throw new ControlException(control.Op);
     }
 
+    public Nothing VisitFunctionStmt(Stmt.Function function)
+    {
+        var loxFunction = new LoxFunction(function, _environment);
+        _environment.Define(function.Name.Lexeme, loxFunction);
+        return new Nothing();
+    }
+
+    public Nothing VisitReturnStmt(Stmt.Return @return)
+    {
+        object? value = @return.Expr is not null
+            ? Evaluate(@return.Expr)
+            : null;
+
+        throw new ReturnException(value);
+    }
+
     //
     // Expression visitor
     //
@@ -280,6 +386,31 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
 
 
+    public object? VisitCallExpr(Expr.Call call)
+    {
+        object? callee = Evaluate(call.Callee);
+
+        var args = call.Arguments
+            .Select(Evaluate)
+            .ToArray();
+
+        if (callee is ILoxCallable callable)
+        {
+            if (callable.Arity != args.Length)
+            {
+                throw new RuntimeError(call.Paren, $"Expected {callable.Arity} arguments but got {args.Length}.");
+            }
+
+            return callable.Call(this, args);
+        }
+        else
+        {
+            throw new RuntimeError(call.Paren, "Can only call functions and classes.");
+        }
+    }
+
+
+
 
 
     //
@@ -350,6 +481,5 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
         return a.Equals(b);
     }
-
 
 }
