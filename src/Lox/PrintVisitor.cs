@@ -45,6 +45,21 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
         return $"Call {call.Callee.Accept(this)}({String.Join(", ", call.Arguments.Select(x => x.Accept(this)))})";
     }
 
+    public string VisitFunctionExpr(Expr.Function function)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"Function ({String.Join(", ", function.Parms.Select(p => p.Lexeme))}) {{");
+        foreach (var stmt in function.Body)
+        {
+            sb.Append("    "); // TODO must indent every line
+            sb.AppendLine(stmt.Accept(this));
+        }
+        sb.AppendLine("}");
+
+        return sb.ToString();
+    }
+
     private string FormatAndAcceptChilds(string name, params Expr[] exprs)
     {
         var sb = new StringBuilder();
@@ -129,8 +144,8 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
     {
         var sb = new StringBuilder();
 
-        sb.AppendLine($"Function {function.Name.Lexeme} ({String.Join(", ", function.Parms.Select(p => p.Lexeme))}) {{");
-        foreach (var stmt in function.Body)
+        sb.AppendLine($"Function {function.Name.Lexeme} ({String.Join(", ", function.Fun.Parms.Select(p => p.Lexeme))}) {{");
+        foreach (var stmt in function.Fun.Body)
         {
             sb.Append("    "); // TODO must indent every line
             sb.AppendLine(stmt.Accept(this));
@@ -147,4 +162,6 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
 
         return $"Return {@return.Expr.Accept(this)}; ";
     }
+
+
 }

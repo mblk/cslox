@@ -1,4 +1,5 @@
 ﻿using Lox.Model;
+using System.Diagnostics;
 
 namespace Lox;
 
@@ -17,11 +18,7 @@ public class Parser
     //
     // varDecl      → "var" IDENTIFIER ( "=" expression )? ";" ;
     //
-    // funDecl      → "fun" function ;
-    //
-    // function     → IDENTIFIER "(" parameters? ")" block ;
-    //
-    // parameters   → IDENTIFIER ( "," IDENTIFIER )* ;
+    // funDecl      → "fun" IDENTIFIER function ;
     //
     // statement    → exprStmt
     //              | ifStmt
@@ -79,7 +76,12 @@ public class Parser
     //              | NUMBER | STRING
     //              | "(" expression ")"
     //              | INDENTIFIER
+    //              | "fun" function
     //              ;
+    //
+    // function     → "(" parameters? ")" block ;
+    //
+    // parameters   → IDENTIFIER ( "," IDENTIFIER )* ;
     //
 
     // Grammar notation Code representation:
@@ -197,30 +199,7 @@ public class Parser
     private Stmt FunDeclaration(string kind)
     {
         Token name = Consume(TokenType.IDENTIFIER, $"Expect {kind} name.");
-
-        Consume(TokenType.LEFT_PAREN, $"Expect '(' after {kind} name.");
-
-        var parameters = new List<Token>();
-        if (!Check(TokenType.RIGHT_PAREN))
-        {
-            do
-            {
-                if (parameters.Count >= 255)
-                {
-                    Error("Can't have more than 255 parameters.");
-                }
-                var p = Consume(TokenType.IDENTIFIER, "Expect parameter name.");
-                parameters.Add(p);
-            }
-            while (Match(TokenType.COMMA));
-        }
-
-        Consume(TokenType.RIGHT_PAREN, "Expect ')' after parameters.");
-
-        Consume(TokenType.LEFT_BRACE, $"Expect '{{' before {kind} body.");
-        IReadOnlyList<Stmt> body = BlockStatements();
-
-        return new Stmt.Function(name, parameters, body);
+        return new Stmt.Function(name, Function(kind));
     }
 
     private Stmt Statement()
@@ -577,10 +556,41 @@ public class Parser
             return new Expr.Variable(Previous());
         }
 
+        if (Check(TokenType.FUN) && CheckNext(TokenType.LEFT_PAREN))
+        {
+            _ = Advance();
+            return Function("function");
+        }
+
         throw Error("Expect expression.");
     }
 
+    private Expr.Function Function(string kind)
+    {
+        Consume(TokenType.LEFT_PAREN, $"Expect '(' after {kind} name.");
 
+        var parameters = new List<Token>();
+        if (!Check(TokenType.RIGHT_PAREN))
+        {
+            do
+            {
+                if (parameters.Count >= 255)
+                {
+                    Error("Can't have more than 255 parameters.");
+                }
+                var p = Consume(TokenType.IDENTIFIER, "Expect parameter name.");
+                parameters.Add(p);
+            }
+            while (Match(TokenType.COMMA));
+        }
+
+        Consume(TokenType.RIGHT_PAREN, "Expect ')' after parameters.");
+
+        Consume(TokenType.LEFT_BRACE, $"Expect '{{' before {kind} body.");
+        IReadOnlyList<Stmt> body = BlockStatements();
+
+        return new Expr.Function(parameters, body);
+    }
 
 
 
@@ -606,6 +616,14 @@ public class Parser
     private bool Check(TokenType tokenType)
     {
         return Peek().Type == tokenType;
+    }
+
+    private bool CheckNext(TokenType tokenType)
+    {
+        if (IsAtEnd()) return false;
+
+        Debug.Assert(_current + 1 < _tokens.Count);
+        return _tokens[_current + 1].Type == tokenType;
     }
 
     private Token Advance()

@@ -150,6 +150,8 @@ public static class TestDefinitionProvider
         ("function", "too_many_arguments", TestCaseType.Running),
         ("function", "too_many_parameters", TestCaseType.Running),
 
+        ("function", "lambda", TestCaseType.Running), // Custom test
+
         //("if", "class_in_else", TestCaseType.Running),
         //("if", "class_in_then", TestCaseType.Running),
         ("if", "dangling_else", TestCaseType.Running),
@@ -318,6 +320,7 @@ public static class TestDefinitionProvider
         ("while", "var_in_body", TestCaseType.Running),
 
         ("while", "break_continue", TestCaseType.Running), // Custom test
+        
     ];
 
     public static TestDefinition GetTestDefinition()

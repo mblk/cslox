@@ -4,6 +4,14 @@ using System.Globalization;
 
 namespace Lox;
 
+//
+// TODO:
+// - Don't allow return from top level
+// - Catch ControlException at the right places (Methods, Toplevel, ?)
+//
+//
+
+
 public struct Nothing { }
 
 public class RuntimeError : Exception
@@ -78,13 +86,15 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
     private class LoxFunction : ILoxCallable
     {
-        private readonly Stmt.Function _function;
+        private readonly string? _name;
+        private readonly Expr.Function _function;
         private readonly Environment _closure;
 
         public int Arity { get; }
 
-        public LoxFunction(Stmt.Function function, Environment closure)
+        public LoxFunction(string? name, Expr.Function function, Environment closure)
         {
+            _name = name;
             _function = function;
             _closure = closure;
             Arity = _function.Parms.Count;
@@ -115,7 +125,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
         public override string ToString()
         {
-            return $"<fn {_function.Name.Lexeme}>";
+            return _name is not null ? $"<fn {_name}>" : "<fn>";
         }
     }
 
@@ -126,7 +136,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     public Interpreter()
     {
         _environment = _globalEnvironment;
-        _startTime = Process.GetCurrentProcess().StartTime;
+        _startTime = DateTime.Now;
 
         _globalEnvironment.Define("clock", new NativeFunction("clock", 0, (args) =>
         {
@@ -255,7 +265,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
     public Nothing VisitFunctionStmt(Stmt.Function function)
     {
-        var loxFunction = new LoxFunction(function, _environment);
+        var loxFunction = new LoxFunction(function.Name.Lexeme, function.Fun, _environment);
         _environment.Define(function.Name.Lexeme, loxFunction);
         return new Nothing();
     }
@@ -409,6 +419,12 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         }
     }
 
+    public object? VisitFunctionExpr(Expr.Function function)
+    {
+        var loxFunction = new LoxFunction(null, function, _environment);
+        return loxFunction;
+    }
+
 
 
 
@@ -481,5 +497,4 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
         return a.Equals(b);
     }
-
 }
