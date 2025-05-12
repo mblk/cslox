@@ -35,6 +35,8 @@
 [AstGen("Function : IReadOnlyList<Token> parms, IReadOnlyList<Stmt> body")]
 public abstract partial class Expr
 {
+    public int? HopsToEnv { get; set; }
+
     static Expr()
     {
         _ = Expr.SomeFunc(); // Go to definition to see output of source-generator.

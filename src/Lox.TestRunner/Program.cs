@@ -84,10 +84,17 @@ public static class Program
         var expectedOutputs = testParser.Parse().ToArray();
 
         var interpreterRunner = new InterpreterRunner();
-        var outputLines = interpreterRunner.Run(fileInfo.FullName, args).ToArray();
+        var (outputLines, exitCode) = interpreterRunner.Run(fileInfo.FullName, args); //.ToArray();
 
         var validator = new TestValidator(expectedOutputs, outputLines);
-        if (validator.Validate())
+        if (exitCode != 0)
+        {
+            Console.WriteLine($"Exit code != 0, output:");
+            foreach (var line in outputLines)
+                Console.WriteLine(line);
+            return false;
+        }
+        else if (validator.Validate())
         {
             //Console.WriteLine($"Success");
             return true;

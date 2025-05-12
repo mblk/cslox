@@ -15,7 +15,8 @@ public static class TestDefinitionProvider
 {
     private static readonly (string, string, TestCaseType)[] _testCases2 =
     [
-        ("print", "missing_argument", TestCaseType.Running),
+        ("while", "break_outside_loop", TestCaseType.Running),
+        ("while", "break_at_top_level", TestCaseType.Running),
 
     ];
 
@@ -320,6 +321,7 @@ public static class TestDefinitionProvider
         ("while", "var_in_body", TestCaseType.Running),
 
         ("while", "break_continue", TestCaseType.Running), // Custom test
+        ("while", "break_outside_loop", TestCaseType.Running), // Custom test
         
     ];
 

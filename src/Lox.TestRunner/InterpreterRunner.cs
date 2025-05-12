@@ -8,7 +8,7 @@ public class InterpreterRunner
     {
     }
 
-    public IReadOnlyList<string> Run(string fileName, string args)
+    public (IReadOnlyList<string>, int) Run(string fileName, string args)
     {
         var pathToLox = @"C:\workspace\repos\cslox\src\Lox\bin\Debug\net9.0\Lox.exe";
 
@@ -18,7 +18,7 @@ public class InterpreterRunner
             Arguments = $"{args} \"{fileName}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
-            //RedirectStandardError = true,
+            RedirectStandardError = true,
             CreateNoWindow = true,
         };
 
@@ -39,6 +39,18 @@ public class InterpreterRunner
             outputLines.Add(line);
         }
 
-        return outputLines;
+        while (!process.StandardError.EndOfStream)
+        {
+            var line = process.StandardError.ReadLine();
+            if (String.IsNullOrEmpty(line)) continue;
+
+            outputLines.Add($"Err: {line}");
+        }
+
+        process.WaitForExit();
+
+        //Console.WriteLine($"Exit code: {process.ExitCode}");
+
+        return (outputLines, process.ExitCode);
     }
 }

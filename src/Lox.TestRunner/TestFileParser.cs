@@ -12,21 +12,40 @@ public partial class TestFileParser
 
 
 
+    //
+    // Errors raised by the Scanner or Parser:
+    //
+
     // Error at '=': Invalid assignment target.
     [GeneratedRegex("// (Error.*)", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex ExpectErrorRegex();
 
-
-
     // [line 2] Error at ';': Expect property name after '.'.
-    [GeneratedRegex(@"// \[line (\d+)\] (Error.*)", RegexOptions.IgnoreCase, "en-US")]
+    [GeneratedRegex(@"// \[((java|c) )?line (\d+)\] (Error.*)", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex ExpectErrorWithLineRegex();
 
 
 
+    //
+    // Errors raised by the Resolver:
+    //
+
+    // ResolveError: Undefined variable 'unknown'.
+    // ResolveError at 'unknown': Undefined variable 'unknown'.
+    // [1] ResolveError at 'unknown': Undefined variable 'unknown'.
+    [GeneratedRegex(@"// ((\[\d+\] )?ResolveError.*)", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex ExpectResolveErrorRegex();
+
+
+
+    //
+    // Runtime errors:
+    //
+
     // expect runtime error: Operands must be two numbers or two strings.
     [GeneratedRegex("// expect runtime error: (.+)", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex ExpectRuntimeErrorRegex();
+
 
 
 
@@ -78,8 +97,19 @@ public partial class TestFileParser
             match = ExpectErrorWithLineRegex().Match(line);
             if (match.Success)
             {
-                var lineNum = match.Groups[1].Value;
-                var errMsg = match.Groups[2].Value;
+                var filter = match.Groups[2].Value;
+
+                if (filter == "c") continue;
+
+                if (!String.IsNullOrWhiteSpace(filter))
+                {
+                    // TODO
+                    Console.WriteLine("");
+                }
+
+
+                var lineNum = match.Groups[3].Value;
+                var errMsg = match.Groups[4].Value;
 
                 yield return new ExpectedOutput($"[{lineNum}] {errMsg}");
                 continue;
@@ -91,6 +121,21 @@ public partial class TestFileParser
                 var errMsg = match.Groups[1].Value;
 
                 yield return new ExpectedOutput($"RuntimeError: {errMsg}");
+                continue;
+            }
+
+            match = ExpectResolveErrorRegex().Match(line);
+            if (match.Success)
+            {
+                var errMsg = match.Groups[1].Value;
+
+                // missing line number?
+                if (!match.Groups[3].Success)
+                {
+                    errMsg = $"[{currentLineNum}] {errMsg}";
+                }
+
+                yield return new ExpectedOutput(errMsg);
                 continue;
             }
 

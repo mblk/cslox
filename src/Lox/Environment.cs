@@ -1,6 +1,4 @@
-﻿using Lox.Model;
-
-namespace Lox;
+﻿namespace Lox;
 
 public class Environment
 {
@@ -21,33 +19,40 @@ public class Environment
         _values[name] = value;
     }
 
-    public void Assign(string name, object? value, Token token)
+    public void AssignAtHop(string name, object? value, int hops)
     {
-        if (_values.ContainsKey(name))
-        {
-            _values[name] = value;
-            return;
-        }
+        var env = Ancestor(hops);
 
-        if (_enclosing is not null)
-        {
-            _enclosing.Assign(name, value, token);
-            return;
-        }
+        if (!env._values.ContainsKey(name))
+            throw new InvalidOperationException("Internal error. Item not found in environment after hopping.");
 
-        throw new RuntimeError(token, $"Undefined variable '{name}'.");
+        env._values[name] = value;
     }
 
-    public object? Get(string name, Token token)
+    public object? GetAtHop(string name, int hops)
     {
-        if (_values.TryGetValue(name, out var value))
-            return value;
-
-        if (_enclosing is not null)
+        var env = Ancestor(hops);
+        if (env._values.TryGetValue(name, out var value))
         {
-            return _enclosing.Get(name, token);
+            return value;
         }
 
-        throw new RuntimeError(token, $"Undefined variable '{name}'.");
+        throw new InvalidOperationException("Internal error. Item not found in environment after hopping.");
+    }
+
+    private Environment Ancestor(int hops)
+    {
+        Environment current = this;
+
+        while (hops > 0)
+        {
+            if (current._enclosing is null)
+                throw new InvalidOperationException("Internal error. Invalid hop count.");
+
+            current = current._enclosing!;
+            hops--;
+        }
+
+        return current;
     }
 }

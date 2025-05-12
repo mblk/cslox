@@ -4,16 +4,6 @@ using System.Globalization;
 
 namespace Lox;
 
-//
-// TODO:
-// - Don't allow return from top level
-// - Catch ControlException at the right places (Methods, Toplevel, ?)
-//
-//
-
-
-public struct Nothing { }
-
 public class RuntimeError : Exception
 {
     public Token Token { get; }
@@ -170,10 +160,6 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         {
             Console.WriteLine(runtimeError);
         }
-        catch (ControlException controlException)
-        {
-            Console.WriteLine($"Unhandled control exception: {controlException.Token.Lexeme}");
-        }
     }
 
     //
@@ -244,7 +230,8 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
                         blockStatement.Statements.Count == 2 &&
                         blockStatement.Statements[1].Tag == "for_increment")
                     {
-                        Execute(blockStatement.Statements[1]);
+                        // Must be executed on block or else 'HopsToEnv' is off by one.
+                        ExecuteBlock([ blockStatement.Statements[1] ], new Environment(_environment));
                     }
 
                     continue;
@@ -285,8 +272,13 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
     public object? VisitAssignExpr(Expr.Assign assign)
     {
+        if (!assign.HopsToEnv.HasValue)
+            throw new InvalidOperationException("Internal error. HopsToEnv not set on Expr.Assign.");
+
         object? value = Evaluate(assign.Value);
-        _environment.Assign(assign.Name.Lexeme, value, assign.Name);
+
+        _environment.AssignAtHop(assign.Name.Lexeme, value, assign.HopsToEnv.Value);
+
         return value;
     }
 
@@ -391,10 +383,11 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
     public object? VisitVariableExpr(Expr.Variable variable)
     {
-        return _environment.Get(variable.Name.Lexeme, variable.Name);
+        if (!variable.HopsToEnv.HasValue)
+            throw new InvalidOperationException("Internal error. HopsToEnv not set on Expr.Variable.");
+
+        return _environment.GetAtHop(variable.Name.Lexeme, variable.HopsToEnv.Value);
     }
-
-
 
     public object? VisitCallExpr(Expr.Call call)
     {

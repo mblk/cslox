@@ -122,7 +122,7 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
     {
         var cond = @if.Condition.Accept(this);
         var then = @if.ThenBranch.Accept(this);
-        var @else = @if.ThenBranch != null ? @if.ThenBranch.Accept(this) : "---";
+        var @else = @if.ElseBranch != null ? @if.ElseBranch.Accept(this) : "---";
 
         return $"If ({cond}) {then} else {@else} ";
     }

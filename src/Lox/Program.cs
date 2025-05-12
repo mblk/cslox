@@ -141,6 +141,8 @@ public class Lox
 
     public void Run(string source)
     {
+        var error = false;
+
         var scanner = new Scanner(source);
         var scanResult = scanner.ScanTokens();
 
@@ -148,6 +150,8 @@ public class Lox
         {
             Console.WriteLine(scanError);
         }
+
+        error |= !scanResult.Success;
 
         // Try expressions first.
         if (_replMode)
@@ -173,7 +177,22 @@ public class Lox
                 Console.WriteLine(parseError);
             }
 
-            if (!scanResult.Success || !parseResult.Success)
+            error |= !parseResult.Success;
+
+            if (scanResult.Success && parseResult.Success)
+            {
+                var resolver = new Resolver();
+                var resolverResult = resolver.DoWork(parseResult.Statements);
+
+                foreach (var err in resolverResult.Errors)
+                {
+                    Console.WriteLine(err);
+                }
+
+                error |= !resolverResult.Success;
+            }
+            
+            if (error)
             {
                 return;
             }
