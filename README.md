@@ -26,7 +26,7 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Break/continue
     - [x] Functions
     - [x] Anonymous functions
-    - [ ] Semantic analysis
+    - [x] Semantic analysis
     - [ ] Classes
     - [ ] Inheritance
     - [ ] ...
