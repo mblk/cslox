@@ -13,12 +13,17 @@ public class Parser
     //
     // declaration  → varDecl
     //              | funDecl
+    //              | classDecl
     //              | statement
     //              ;
     //
     // varDecl      → "var" IDENTIFIER ( "=" expression )? ";" ;
     //
     // funDecl      → "fun" IDENTIFIER function ;
+    //
+    // classDecl    → "class" IDENTIFIER "{" method* "}" ;
+    //
+    // method       → IDENTIFIER "(" parameters? ")" block ;
     //
     // statement    → exprStmt
     //              | ifStmt
@@ -48,7 +53,7 @@ public class Parser
     //
     // expression   → assignment ;
     //
-    // assignment   → IDENTIFIER "=" assignment
+    // assignment   → ( call "." )? IDENTIFIER "=" assignment
     //              | logic_or
     //              ;
     //
@@ -68,15 +73,16 @@ public class Parser
     //              | call
     //              ;
     //
-    // call         → primary ( "(" arguments? ")" )* ;
+    // call         → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
     //
     // arguments    → expression ( "," expression )* ;
     //
     // primary      → "true" | "false" | "nil"
     //              | NUMBER | STRING
     //              | "(" expression ")"
-    //              | INDENTIFIER
+    //              | IDENTIFIER
     //              | "fun" function
+    //              | "this"
     //              ;
     //
     // function     → "(" parameters? ")" block ;
@@ -113,14 +119,16 @@ public class Parser
 
         public override string ToString()
         {
-            return $"[{Token.Line}] Error at '{Token.Lexeme}': {Message}";
+            var location = Token.Type == TokenType.EOF
+                ? "end"
+                : $"'{Token.Lexeme}'";
+
+            return $"[{Token.Line}] Error at {location}: {Message}";
         }
     }
 
     private readonly IReadOnlyList<Token> _tokens;
-
     private readonly List<ParseError> _errors = [];
-
     private int _current = 0;
 
     public Parser(IReadOnlyList<Token> tokens)
@@ -169,6 +177,7 @@ public class Parser
         {
             if (Match(TokenType.VAR)) return VarDeclaration();
             if (Match(TokenType.FUN)) return FunDeclaration("function");
+            if (Match(TokenType.CLASS)) return ClassDeclaration();
 
             return Statement();
         }
@@ -199,7 +208,31 @@ public class Parser
     private Stmt FunDeclaration(string kind)
     {
         Token name = Consume(TokenType.IDENTIFIER, $"Expect {kind} name.");
-        return new Stmt.Function(name, Function(kind));
+        Expr.Function fun = Function(kind);
+        return new Stmt.Function(name, fun);
+    }
+
+    private Stmt ClassDeclaration()
+    {
+        Token name = Consume(TokenType.IDENTIFIER, "Expect class name.");
+        Consume(TokenType.LEFT_BRACE, "Expect '{' before class body.");
+
+        var methods = new List<Stmt.Method>();
+        while (!Check(TokenType.RIGHT_BRACE) && !IsAtEnd())
+        {
+            methods.Add(Method());
+        }
+
+        Consume(TokenType.RIGHT_BRACE, "Expect '}' after class body.");
+
+        return new Stmt.Class(name, methods);
+    }
+
+    private Stmt.Method Method()
+    {
+        Token name = Consume(TokenType.IDENTIFIER, "Expect method name.");
+        Expr.Function fun = Function("method");
+        return new Stmt.Method(name, fun);
     }
 
     private Stmt Statement()
@@ -395,6 +428,10 @@ public class Parser
             {
                 return new Expr.Assign(variableExpr.Name, assignment);
             }
+            else if (expr is Expr.Get getExpr)
+            {
+                return new Expr.Set(getExpr.Object, getExpr.Name, assignment);
+            }
             else
             {
                 _ = Error(equals, "Invalid assignment target."); // Not throwing
@@ -506,28 +543,37 @@ public class Parser
     {
         Expr expr = Primary();
 
-        while (Match(TokenType.LEFT_PAREN))
+        while (true)
         {
-            var arguments = new List<Expr>();
-
-            // no args?
-            if (!Check(TokenType.RIGHT_PAREN))
+            if (Match(TokenType.LEFT_PAREN))
             {
-                do
+                var arguments = new List<Expr>();
+                if (!Check(TokenType.RIGHT_PAREN)) // no args?
                 {
-                    if (arguments.Count >= 255)
+                    do
                     {
-                        Error("Can't have more than 255 arguments.");
+                        if (arguments.Count >= 255)
+                        {
+                            Error("Can't have more than 255 arguments.");
+                        }
+                        arguments.Add(Expression());
                     }
-
-                    arguments.Add(Expression());
+                    while (Match(TokenType.COMMA));
                 }
-                while (Match(TokenType.COMMA));
+                var tokenForError = Consume(TokenType.RIGHT_PAREN, "Expect ')' after arguments.");
+
+                expr = new Expr.Call(expr, tokenForError, arguments);
             }
+            else if (Match(TokenType.DOT))
+            {
+                Token name = Consume(TokenType.IDENTIFIER, "Expect property name after '.'.");
 
-            var tokenForError = Consume(TokenType.RIGHT_PAREN, "Expect ')' after arguments.");
-
-            expr = new Expr.Call(expr, tokenForError, arguments);
+                expr = new Expr.Get(expr, name);
+            }
+            else
+            {
+                break;
+            }
         }
 
         return expr;
@@ -544,16 +590,21 @@ public class Parser
             return new Expr.Literal(Previous().Literal);
         }
 
-        if (Match(TokenType.LEFT_PAREN))
+        if (Match(TokenType.THIS))
         {
-            Expr expr = Expression();
-            Consume(TokenType.RIGHT_PAREN, "Expect ')' after expression.");
-            return new Expr.Grouping(expr);
+            return new Expr.This(Previous());
         }
 
         if (Match(TokenType.IDENTIFIER))
         {
             return new Expr.Variable(Previous());
+        }
+
+        if (Match(TokenType.LEFT_PAREN))
+        {
+            Expr expr = Expression();
+            Consume(TokenType.RIGHT_PAREN, "Expect ')' after expression.");
+            return new Expr.Grouping(expr);
         }
 
         if (Check(TokenType.FUN) && CheckNext(TokenType.LEFT_PAREN))

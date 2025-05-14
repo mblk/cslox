@@ -55,4 +55,27 @@ public class Environment
 
         return current;
     }
+
+    public void Dump()
+    {
+        Console.WriteLine($"== Environment Dump Start ==");
+
+        Environment? current = this;
+        var level = 0;
+
+        while (current != null)
+        {
+            var indent = new string(' ', level * 2);
+
+            foreach (var (key, value) in current._values)
+            {
+                Console.WriteLine($"{indent}{key} = {value}");
+            }
+
+            current = current._enclosing;
+            level++;
+        }
+
+        Console.WriteLine($"== Environment Dump End ==");
+    }
 }

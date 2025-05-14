@@ -1,5 +1,6 @@
 ﻿using Lox.Model;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace Lox;
@@ -79,14 +80,16 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         private readonly string? _name;
         private readonly Expr.Function _function;
         private readonly Environment _closure;
+        private readonly bool _isInitMethod; // TODO i don't like this
 
         public int Arity { get; }
 
-        public LoxFunction(string? name, Expr.Function function, Environment closure)
+        public LoxFunction(string? name, Expr.Function function, Environment closure, bool isInitMethod)
         {
             _name = name;
             _function = function;
             _closure = closure;
+            _isInitMethod = isInitMethod; // TODO i don't like this
             Arity = _function.Parms.Count;
         }
 
@@ -107,15 +110,132 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
             }
             catch (ReturnException returnException)
             {
+                // TODO i don't like this
+                if (_isInitMethod)
+                {
+                    // init() methods always return 'this';
+                    return _closure.GetAtHop("this", 0);
+                }
+
                 return returnException.Value;
+            }
+
+            // TODO i don't like this
+            if (_isInitMethod)
+            {
+                // init() methods always return 'this';
+                return _closure.GetAtHop("this", 0);
             }
 
             return null;
         }
 
+        public LoxFunction Bind(LoxInstance instance) // TODO maybe move to LoxInstance ?
+        {
+            var env = new Environment(_closure);
+            env.Define("this", instance);
+            return new LoxFunction(_name, _function, env, _isInitMethod);
+        }
+
         public override string ToString()
         {
             return _name is not null ? $"<fn {_name}>" : "<fn>";
+        }
+    }
+
+    private class LoxClass : ILoxCallable
+    {
+        private readonly IReadOnlyDictionary<string, LoxFunction> _methods;
+        private readonly LoxFunction? _initMethod;
+
+        public string Name { get; }
+
+        public LoxClass(string name, IReadOnlyDictionary<string, LoxFunction> methods)
+        {
+            Name = name;
+            _methods = methods;
+
+            if (methods.TryGetValue("init", out var initMethod))
+            {
+                _initMethod = initMethod;
+                Arity = initMethod.Arity;
+            }
+            else
+            {
+                _initMethod = null;
+                Arity = 0;
+            }
+        }
+
+        public int Arity { get; }
+
+        public object? Call(Interpreter interpreter, IReadOnlyList<object?> args)
+        {
+            var instance = new LoxInstance(this);
+
+            if (_initMethod != null)
+            {
+                _initMethod.Bind(instance).Call(interpreter, args);
+            }
+
+            return instance;
+        }
+
+        public bool FindMethod(string name, [NotNullWhen(true)] out LoxFunction? method)
+        {
+            if (_methods.TryGetValue(name, out var m))
+            {
+                method = m;
+                return true;
+            }
+
+            // TODO inheritance etc
+
+            method = null;
+            return false;
+        }
+
+        public override string ToString()
+        {
+            return Name; // that's what the tests want.
+            //return $"<class {Name}>";
+        }
+    }
+
+    private class LoxInstance
+    {
+        private readonly LoxClass _class;
+        private readonly Dictionary<string, object?> _fields = [];
+
+        public LoxInstance(LoxClass @class)
+        {
+            _class = @class;
+        }
+
+        public object? Get(string name, Token tokenForError)
+        {
+            // Terminology: return a property which is either a field or a method.
+
+            if (_fields.TryGetValue(name, out var value))
+                return value;
+
+            if (_class.FindMethod(name, out var method))
+                return method.Bind(this);
+
+            throw new RuntimeError(tokenForError, $"Undefined property '{name}'.");
+        }
+
+        public void Set(string name, object? value, Token tokenForError)
+        {
+            _ = tokenForError;
+
+            _fields[name] = value;
+        }
+
+        public override string ToString()
+        {
+            return $"{_class.Name} instance"; // that's what the tests want.
+            //return $"<instance of {_class}>";
         }
     }
 
@@ -183,6 +303,16 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         object? value = Evaluate(print.Expr);
         var s = Stringify(value);
         Console.WriteLine(s);
+
+        // xxx sneaky debug tools xxx
+        switch (s)
+        {
+            case "env":
+                _environment.Dump();
+                break;
+        }
+        // xxx
+
         return new Nothing();
     }
 
@@ -252,7 +382,7 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
     public Nothing VisitFunctionStmt(Stmt.Function function)
     {
-        var loxFunction = new LoxFunction(function.Name.Lexeme, function.Fun, _environment);
+        var loxFunction = new LoxFunction(function.Name.Lexeme, function.Fun, _environment, false);
         _environment.Define(function.Name.Lexeme, loxFunction);
         return new Nothing();
     }
@@ -264,6 +394,26 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
             : null;
 
         throw new ReturnException(value);
+    }
+
+    public Nothing VisitClassStmt(Stmt.Class @class)
+    {
+        _environment.Define(@class.Name.Lexeme, null); // TODO is this actually required?
+
+        var methods = @class.Methods
+            .Select(m => (m.Name.Lexeme, Method: new LoxFunction(m.Name.Lexeme, m.Fun, _environment, m.Name.Lexeme == "init")))
+            .ToDictionary(x => x.Lexeme, x => x.Method);
+
+        var loxClass = new LoxClass(@class.Name.Lexeme, methods);
+
+        _environment.AssignAtHop(@class.Name.Lexeme, loxClass, 0);
+
+        return new Nothing();
+    }
+
+    public Nothing VisitMethodStmt(Stmt.Method method)
+    {
+        throw new InvalidOperationException("Must not reach");
     }
 
     //
@@ -414,8 +564,42 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
     public object? VisitFunctionExpr(Expr.Function function)
     {
-        var loxFunction = new LoxFunction(null, function, _environment);
+        var loxFunction = new LoxFunction(null, function, _environment, false);
         return loxFunction;
+    }
+
+    public object? VisitGetExpr(Expr.Get get)
+    {
+        object? obj = Evaluate(get.Object);
+
+        if (obj is LoxInstance instance)
+        {
+            return instance.Get(get.Name.Lexeme, get.Name);
+        }
+
+        throw new RuntimeError(get.Name, "Only instances have properties.");
+    }
+
+    public object? VisitSetExpr(Expr.Set set)
+    {
+        object? obj = Evaluate(set.Object);
+        object? value = Evaluate(set.Value);
+
+        if (obj is LoxInstance instance)
+        {
+            instance.Set(set.Name.Lexeme, value, set.Name);
+            return value;
+        }
+
+        throw new RuntimeError(set.Name, "Only instances have properties.");
+    }
+
+    public object? VisitThisExpr(Expr.This @this)
+    {
+        if (!@this.HopsToEnv.HasValue)
+            throw new InvalidOperationException("Internal error. HopsToEnv not set on Expr.This.");
+
+        return _environment.GetAtHop(@this.Token.Lexeme, @this.HopsToEnv.Value);
     }
 
 
@@ -490,4 +674,6 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
         return a.Equals(b);
     }
+
+
 }

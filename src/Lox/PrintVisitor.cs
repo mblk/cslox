@@ -45,6 +45,16 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
         return $"Call {call.Callee.Accept(this)}({String.Join(", ", call.Arguments.Select(x => x.Accept(this)))})";
     }
 
+    public string VisitGetExpr(Expr.Get get)
+    {
+        return $"Get {get.Object.Accept(this)} . {get.Name.Lexeme}";
+    }
+
+    public string VisitSetExpr(Expr.Set set)
+    {
+        return $"Set {set.Object.Accept(this)} . {set.Name.Lexeme} = {set.Value.Accept(this)}";
+    }
+
     public string VisitFunctionExpr(Expr.Function function)
     {
         var sb = new StringBuilder();
@@ -58,6 +68,11 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
         sb.AppendLine("}");
 
         return sb.ToString();
+    }
+
+    public string VisitThisExpr(Expr.This @this)
+    {
+        return $"This";
     }
 
     private string FormatAndAcceptChilds(string name, params Expr[] exprs)
@@ -144,7 +159,7 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
     {
         var sb = new StringBuilder();
 
-        sb.AppendLine($"Function {function.Name.Lexeme} ({String.Join(", ", function.Fun.Parms.Select(p => p.Lexeme))}) {{");
+        sb.AppendLine($"Function {function.Name.Lexeme} ({String.Join(", ", function.Fun.Parms.Select(p => p.Lexeme))}) {{"); // TODO reuse fun-expr printer
         foreach (var stmt in function.Fun.Body)
         {
             sb.Append("    "); // TODO must indent every line
@@ -161,6 +176,38 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
             return "Return; ";
 
         return $"Return {@return.Expr.Accept(this)}; ";
+    }
+
+    public string VisitClassStmt(Stmt.Class @class)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"Class {@class.Name.Lexeme}");
+        sb.AppendLine("{");
+
+        foreach (var m in @class.Methods)
+        {
+            sb.AppendLine(m.Accept(this));
+        }
+
+        sb.AppendLine("}");
+
+        return sb.ToString();
+    }
+
+    public string VisitMethodStmt(Stmt.Method method)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"Method {method.Name.Lexeme} ({String.Join(", ", method.Fun.Parms.Select(p => p.Lexeme))}) {{"); // TODO reuse fun-expr printer
+        foreach (var stmt in method.Fun.Body)
+        {
+            sb.Append("    "); // TODO must indent every line
+            sb.AppendLine(stmt.Accept(this));
+        }
+        sb.AppendLine("}");
+
+        return sb.ToString();
     }
 
 

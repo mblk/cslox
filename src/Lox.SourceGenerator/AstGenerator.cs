@@ -107,8 +107,8 @@ public class AstGenerator : IIncrementalGenerator
 
             var type = p[0];
             var name = p[1];
-            var lowerName = FirstCharacterToLower(name);
-            var upperName = FirstCharacterToUpper(name);
+            var lowerName = EscapeKeywords(FirstCharacterToLower(name));
+            var upperName = EscapeKeywords(FirstCharacterToUpper(name));
 
             properties.Add(new AstPropertyData(Type: type, LowerName: lowerName, UpperName: upperName));
         }

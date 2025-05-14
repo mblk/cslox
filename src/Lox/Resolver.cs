@@ -23,11 +23,19 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
         }
     }
 
+    private enum CurrentClass
+    {
+        None,
+        Class,
+    }
+
     private enum CurrentFunction
     {
         None,
+        Lambda,
         Function,
         Method,
+        Initializer,
     }
 
     private enum CurrentLoop
@@ -39,6 +47,7 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
     private readonly List<ResolveError> _errors = [];
     private readonly Stack<Dictionary<string, bool>> _scopes = [];
 
+    private CurrentClass _currentClass = CurrentClass.None;
     private CurrentFunction _currentFunction = CurrentFunction.None;
     private CurrentLoop _currentLoop = CurrentLoop.None;
 
@@ -94,7 +103,7 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
         Declare(function.Name.Lexeme, function.Name);
         Define(function.Name.Lexeme);
 
-        Resolve(function.Fun);
+        ResolveFunctionExpression(function.Fun, CurrentFunction.Function);
 
         return new Nothing();
     }
@@ -123,6 +132,11 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
             Error(@return.Token, "Can't return from top-level code.");
         }
 
+        if (_currentFunction == CurrentFunction.Initializer && @return.Expr is not null)
+        {
+            Error(@return.Token, "Can't return a value from an initializer.");
+        }
+
         if (@return.Expr is not null)
             Resolve(@return.Expr);
 
@@ -147,10 +161,47 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
 
         var prevLoop = _currentLoop;
         _currentLoop = CurrentLoop.While;
-
-        Resolve(@while.Body);
-        
+        {
+            Resolve(@while.Body);
+        }
         _currentLoop = prevLoop;
+
+        return new Nothing();
+    }
+
+    public Nothing VisitClassStmt(Stmt.Class @class)
+    {
+        var prevClass = _currentClass;
+        _currentClass = CurrentClass.Class;
+        {
+            Declare(@class.Name.Lexeme, @class.Name);
+            Define(@class.Name.Lexeme);
+
+            BeginScope(); // This is the scope that methods are bound to.
+            {
+                Declare("this", @class.Name);
+                Define("this");
+
+                foreach (var method in @class.Methods)
+                {
+                    Resolve(method);
+                }
+            }
+            EndScope();
+        }
+        _currentClass = prevClass;
+
+        return new Nothing();
+    }
+
+    public Nothing VisitMethodStmt(Stmt.Method method)
+    {
+        // Not adding the name to the current scope.
+        // Commented out code left here because i'm not sure if this is required or not.
+        //Declare(method.Name.Lexeme, method.Name);
+        //Define(method.Name.Lexeme);
+
+        ResolveFunctionExpression(method.Fun, method.Name.Lexeme == "init" ? CurrentFunction.Initializer : CurrentFunction.Method);
 
         return new Nothing();
     }
@@ -195,22 +246,22 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
 
     public Nothing VisitFunctionExpr(Expr.Function function)
     {
-        BeginScope();
+        ResolveFunctionExpression(function, CurrentFunction.Lambda);
 
-        foreach (var parm in function.Parms)
-        {
-            Declare(parm.Lexeme, parm);
-            Define(parm.Lexeme);
-        }
+        return new Nothing();
+    }
 
-        var prevFunction = _currentFunction;
-        _currentFunction = CurrentFunction.Function;
+    public Nothing VisitGetExpr(Expr.Get get)
+    {
+        Resolve(get.Object);
 
-        Resolve(function.Body);
-        
-        _currentFunction = prevFunction;
+        return new Nothing();
+    }
 
-        EndScope();
+    public Nothing VisitSetExpr(Expr.Set set)
+    {
+        Resolve(set.Object);
+        Resolve(set.Value);
 
         return new Nothing();
     }
@@ -263,6 +314,26 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
         return new Nothing();
     }
 
+    public Nothing VisitThisExpr(Expr.This @this)
+    {
+        if (_currentClass != CurrentClass.Class)
+        {
+            Error(@this.Token, "Can't use 'this' outside of a class.");
+            return new Nothing();
+        }
+
+        if (FindInScopes("this", out var hops))
+        {
+            SaveResolution(@this, hops);
+        }
+        else
+        {
+            throw new InvalidOperationException("Internal error. This not found in surrounding scopes.");
+        }
+
+        return new Nothing();
+    }
+
     //
     // Scope management
     //
@@ -308,6 +379,21 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
             throw new InvalidOperationException("Internal error. Name to define not in scope.");
 
         scope[name] = true; // true = declared and defined
+    }
+
+    private void DumpScopes()
+    {
+        Console.WriteLine($"== DumpScopes ==");
+
+        for (var i = 0; i<_scopes.Count; i++)
+        {
+            var scope = _scopes.ElementAt(i);
+
+            foreach (var (key, value) in scope)
+            {
+                Console.WriteLine($"[{i}] {key} -> {value}");
+            }
+        }
     }
 
     private bool IsInInitializer(Token name)
@@ -368,6 +454,26 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
     // Utils
     //
 
+    private void ResolveFunctionExpression(Expr.Function function, CurrentFunction functionType)
+    {
+        BeginScope();
+        {
+            foreach (var parm in function.Parms)
+            {
+                Declare(parm.Lexeme, parm);
+                Define(parm.Lexeme);
+            }
+
+            var prevFunction = _currentFunction;
+            _currentFunction = functionType;
+            {
+                Resolve(function.Body);
+            }
+            _currentFunction = prevFunction;
+        }
+        EndScope();
+    }
+
     private void Resolve(IEnumerable<Stmt> block)
     {
         foreach (var stmt in block)
@@ -390,4 +496,6 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
     {
         _errors.Add(new ResolveError(token, message));
     }
+
+
 }
