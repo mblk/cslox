@@ -21,7 +21,7 @@ public class Parser
     //
     // funDecl      → "fun" IDENTIFIER function ;
     //
-    // classDecl    → "class" IDENTIFIER "{" method* "}" ;
+    // classDecl    → "class" IDENTIFIER ( "<" IDENTIFIER )? "{" method* "}" ;
     //
     // method       → IDENTIFIER "(" parameters? ")" block ;
     //
@@ -82,7 +82,7 @@ public class Parser
     //              | "(" expression ")"
     //              | IDENTIFIER
     //              | "fun" function
-    //              | "this"
+    //              | "this" | "super"
     //              ;
     //
     // function     → "(" parameters? ")" block ;
@@ -215,6 +215,14 @@ public class Parser
     private Stmt ClassDeclaration()
     {
         Token name = Consume(TokenType.IDENTIFIER, "Expect class name.");
+
+        Expr.Variable? superclass = null;
+        if (Match(TokenType.LESS))
+        {
+            Token t = Consume(TokenType.IDENTIFIER, "Expect superclass name.");
+            superclass = new Expr.Variable(t);
+        }
+
         Consume(TokenType.LEFT_BRACE, "Expect '{' before class body.");
 
         var methods = new List<Stmt.Method>();
@@ -225,7 +233,7 @@ public class Parser
 
         Consume(TokenType.RIGHT_BRACE, "Expect '}' after class body.");
 
-        return new Stmt.Class(name, methods);
+        return new Stmt.Class(name, superclass, methods);
     }
 
     private Stmt.Method Method()
@@ -593,6 +601,11 @@ public class Parser
         if (Match(TokenType.THIS))
         {
             return new Expr.This(Previous());
+        }
+
+        if (Match(TokenType.SUPER))
+        {
+            return new Expr.Super(Previous());
         }
 
         if (Match(TokenType.IDENTIFIER))

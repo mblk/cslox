@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace Lox.TestRunner;
 
@@ -6,58 +7,35 @@ public record ExpectedOutput(string Output);
 
 public partial class TestFileParser
 {
+    //
+    // Expected output by print-statements:
+    //
     // expect: false
+
     [GeneratedRegex("// expect: (.*)", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex ExpectOutputRegex();
 
-
-
     //
-    // Errors raised by the Scanner or Parser:
+    // Errors raised by the Scanner or Parser or Resolver:
     //
-
+    // Error: Invalid assignment target.
     // Error at '=': Invalid assignment target.
-    [GeneratedRegex("// (Error.*)", RegexOptions.IgnoreCase, "en-US")]
+    // [1] Error at '=': Invalid assignment target.
+    // [line 1] Error at '=': Invalid assignment target.
+    // [c 1] Error at '=': Invalid assignment target.
+    // [c line 1] Error at '=': Invalid assignment target.
+
+    [GeneratedRegex(@"//\s*(\[(java|c)?\s*(line )?(\d+)\])?\s*((Error|ResolveError).*)", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex ExpectErrorRegex();
-
-    // [line 2] Error at ';': Expect property name after '.'.
-    [GeneratedRegex(@"// \[((java|c) )?line (\d+)\] (Error.*)", RegexOptions.IgnoreCase, "en-US")]
-    private static partial Regex ExpectErrorWithLineRegex();
-
-
-
-    //
-    // Errors raised by the Resolver:
-    //
-
-    // ResolveError: Undefined variable 'unknown'.
-    // ResolveError at 'unknown': Undefined variable 'unknown'.
-    // [1] ResolveError at 'unknown': Undefined variable 'unknown'.
-    [GeneratedRegex(@"// ((\[\d+\] )?ResolveError.*)", RegexOptions.IgnoreCase, "en-US")]
-    private static partial Regex ExpectResolveErrorRegex();
-
-
 
     //
     // Runtime errors:
     //
-
     // expect runtime error: Operands must be two numbers or two strings.
+
     [GeneratedRegex("// expect runtime error: (.+)", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex ExpectRuntimeErrorRegex();
 
-
-
-
-    // TODO syntax error?
-    //[GeneratedRegex(@"\[.*line (\d+)\] (Error.+)", RegexOptions.IgnoreCase, "en-US")]
-    //private static partial Regex ExpectSyntaxErrorRegex();
-
-    // TODO stacktrace?
-    //[GeneratedRegex(@"\[line (\d+)\]", RegexOptions.IgnoreCase, "en-US")]
-    //private static partial Regex ExpectStackTraceRegex();
-
-    // TODO nontest?
 
 
     private readonly string _fileName;
@@ -78,6 +56,7 @@ public partial class TestFileParser
 
             Match match;
 
+            // Expect output by print statement?
             match = ExpectOutputRegex().Match(line);
             if (match.Success)
             {
@@ -86,35 +65,33 @@ public partial class TestFileParser
                 continue;
             }
 
+            // Expect error by scanner/parser/resolver?
             match = ExpectErrorRegex().Match(line);
             if (match.Success)
             {
-                var value = match.Groups[1].Value;
-                yield return new ExpectedOutput($"[{currentLineNum}] {value}"); // Automatically set the line number
-                continue;
-            }
+                var langGroup = match.Groups[2];
+                var lineGroup = match.Groups[4];
+                var errorGroup = match.Groups[5];
 
-            match = ExpectErrorWithLineRegex().Match(line);
-            if (match.Success)
-            {
-                var filter = match.Groups[2].Value;
-
-                if (filter == "c") continue;
-
-                if (!String.IsNullOrWhiteSpace(filter))
+                if (langGroup.Success)
                 {
-                    // TODO
-                    Console.WriteLine("");
+                    if (langGroup.Value == "c")
+                    {
+                        //Console.WriteLine($"Skipping: {line}");
+                        continue;
+                    }
                 }
 
+                var lineNum = lineGroup.Success ? lineGroup.Value : currentLineNum.ToString(); // auto set line if not specified
+                Debug.Assert(errorGroup.Success);
 
-                var lineNum = match.Groups[3].Value;
-                var errMsg = match.Groups[4].Value;
+                var expectedOutput = $"[{lineNum}] {errorGroup.Value}";
 
-                yield return new ExpectedOutput($"[{lineNum}] {errMsg}");
+                yield return new ExpectedOutput(expectedOutput);
                 continue;
             }
 
+            // Expect runtime error?
             match = ExpectRuntimeErrorRegex().Match(line);
             if (match.Success)
             {
@@ -124,42 +101,18 @@ public partial class TestFileParser
                 continue;
             }
 
-            match = ExpectResolveErrorRegex().Match(line);
-            if (match.Success)
+            // Unmatched comments?
+            if (line.Contains("//"))
             {
-                var errMsg = match.Groups[1].Value;
+                string[] words = [ "error", "expect", "runtime" ];
 
-                // missing line number?
-                if (!match.Groups[3].Success)
+                if (words.Any(w => line.Contains(w, StringComparison.InvariantCultureIgnoreCase)))
                 {
-                    errMsg = $"[{currentLineNum}] {errMsg}";
+                    Console.WriteLine("!!");
+                    Console.WriteLine($"!! Unhandled comment: {line}");
+                    Console.WriteLine("!!");
                 }
-
-                yield return new ExpectedOutput(errMsg);
-                continue;
             }
-
-
-            if (line.Contains("//") && (line.Contains("error") || line.Contains("Error")))
-            {
-                Console.WriteLine();
-                Console.WriteLine($"!! Unhandled comment: {line}");
-                Console.WriteLine();
-            }
-
-            //match = ExpectSyntaxErrorRegex().Match(line);
-            //if (match.Success)
-            //{
-            //    Console.WriteLine("...");
-            //    yield return new ExpectedOutput($"...");
-            //}
-
-            //match = ExpectStackTraceRegex().Match(line);
-            //if (match.Success)
-            //{
-            //    Console.WriteLine("...");
-            //    yield return new ExpectedOutput($"...");
-            //}
         }
     }
 }

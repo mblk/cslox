@@ -75,6 +75,11 @@ public class PrintVisitor : Expr.IVisitor<string>, Stmt.IVisitor<string>
         return $"This";
     }
 
+    public string VisitSuperExpr(Expr.Super super)
+    {
+        return "Super";
+    }
+
     private string FormatAndAcceptChilds(string name, params Expr[] exprs)
     {
         var sb = new StringBuilder();

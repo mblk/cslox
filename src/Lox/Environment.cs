@@ -67,6 +67,8 @@ public class Environment
         {
             var indent = new string(' ', level * 2);
 
+            Console.WriteLine($"{indent}Level {level}:");
+
             foreach (var (key, value) in current._values)
             {
                 Console.WriteLine($"{indent}{key} = {value}");

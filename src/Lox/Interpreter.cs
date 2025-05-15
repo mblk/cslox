@@ -145,17 +145,19 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
     private class LoxClass : ILoxCallable
     {
+        private readonly LoxClass? _superclass;
         private readonly IReadOnlyDictionary<string, LoxFunction> _methods;
         private readonly LoxFunction? _initMethod;
 
         public string Name { get; }
 
-        public LoxClass(string name, IReadOnlyDictionary<string, LoxFunction> methods)
+        public LoxClass(string name, LoxClass? superclass, IReadOnlyDictionary<string, LoxFunction> methods)
         {
             Name = name;
+            _superclass = superclass;
             _methods = methods;
 
-            if (methods.TryGetValue("init", out var initMethod))
+            if (this.FindMethod("init", out var initMethod))
             {
                 _initMethod = initMethod;
                 Arity = initMethod.Arity;
@@ -189,7 +191,10 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
                 return true;
             }
 
-            // TODO inheritance etc
+            if (_superclass is not null)
+            {
+                return _superclass.FindMethod(name, out method);
+            }
 
             method = null;
             return false;
@@ -205,11 +210,18 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
     private class LoxInstance
     {
         private readonly LoxClass _class;
-        private readonly Dictionary<string, object?> _fields = [];
+        private readonly Dictionary<string, object?> _fields; // = [];
 
         public LoxInstance(LoxClass @class)
         {
             _class = @class;
+            _fields = [];
+        }
+
+        public LoxInstance(LoxClass @class, LoxInstance instance) // used by 'super'-expr to "cast" instance to another type.
+        {
+            _class = @class;
+            _fields = instance._fields;
         }
 
         public object? Get(string name, Token tokenForError)
@@ -228,6 +240,8 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         public void Set(string name, object? value, Token tokenForError)
         {
             _ = tokenForError;
+
+            // TODO: Error if method with same name exists?
 
             _fields[name] = value;
         }
@@ -398,15 +412,27 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
 
     public Nothing VisitClassStmt(Stmt.Class @class)
     {
-        _environment.Define(@class.Name.Lexeme, null); // TODO is this actually required?
+        var methodClosure = _environment;
+
+        // get optional superclass
+        LoxClass? superclass = null;
+        if (@class.Superclass is not null)
+        {
+            superclass = (Evaluate(@class.Superclass) as LoxClass)
+                ?? throw new RuntimeError(@class.Superclass.Name, "Superclass must be a class.");
+
+            // create optional closure for the methods which contains the correct 'super'.
+            methodClosure = new Environment(_environment);
+            methodClosure.Define("super", superclass);
+        }
 
         var methods = @class.Methods
-            .Select(m => (m.Name.Lexeme, Method: new LoxFunction(m.Name.Lexeme, m.Fun, _environment, m.Name.Lexeme == "init")))
+            .Select(m => (m.Name.Lexeme, Method: new LoxFunction(m.Name.Lexeme, m.Fun, methodClosure, m.Name.Lexeme == "init")))
             .ToDictionary(x => x.Lexeme, x => x.Method);
 
-        var loxClass = new LoxClass(@class.Name.Lexeme, methods);
+        var loxClass = new LoxClass(@class.Name.Lexeme, superclass, methods);
 
-        _environment.AssignAtHop(@class.Name.Lexeme, loxClass, 0);
+        _environment.Define(@class.Name.Lexeme, loxClass);
 
         return new Nothing();
     }
@@ -602,9 +628,22 @@ public class Interpreter : Expr.IVisitor<object?>, Stmt.IVisitor<Nothing>
         return _environment.GetAtHop(@this.Token.Lexeme, @this.HopsToEnv.Value);
     }
 
+    public object? VisitSuperExpr(Expr.Super super)
+    {
+        if (!super.HopsToEnv.HasValue)
+            throw new InvalidOperationException("Internal error. HopsToEnv not set on Expr.Super.");
 
+        int hopsToSuper = super.HopsToEnv.Value;
+        int hopsToThis = hopsToSuper - 1;
 
+        LoxClass superclass = (_environment.GetAtHop(super.Token.Lexeme, hopsToSuper) as LoxClass)
+            ?? throw new RuntimeError(super.Token, "Internal error. Undefined property 'super'.");
 
+        LoxInstance @this = (_environment.GetAtHop("this", hopsToThis) as LoxInstance)
+            ?? throw new RuntimeError(super.Token, "Internal error. Undefined property 'this'.");
+
+        return new LoxInstance(superclass, @this);
+    }
 
     //
     // Utils

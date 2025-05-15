@@ -15,16 +15,24 @@ public static class TestDefinitionProvider
 {
     private static readonly (string, string, TestCaseType)[] _testCases2 =
     [
-        ("while", "break_outside_loop", TestCaseType.Running),
-        ("while", "break_at_top_level", TestCaseType.Running),
-
+        ("benchmark", "binary_trees", TestCaseType.Running),
+        ("benchmark", "equality", TestCaseType.Running),
+        ("benchmark", "fib", TestCaseType.Running),
+        ("benchmark", "instantiation", TestCaseType.Running),
+        ("benchmark", "invocation", TestCaseType.Running),
+        ("benchmark", "method_call", TestCaseType.Running),
+        ("benchmark", "properties", TestCaseType.Running),
+        ("benchmark", "string_equality", TestCaseType.Running),
+        ("benchmark", "trees", TestCaseType.Running),
+        ("benchmark", "zoo", TestCaseType.Running),
+        ("benchmark", "zoo_batch", TestCaseType.Running),
     ];
 
     private static readonly (string, string, TestCaseType)[] _testCases =
     [
-        //Unknown: empty_file.lox
-        //Unknown: precedence.lox
-        //Unknown: unexpected_character.lox
+        ("", "empty_file", TestCaseType.Running),
+        ("", "precedence", TestCaseType.Running),
+        ("", "unexpected_character", TestCaseType.Running),
 
         ("assignment", "associativity", TestCaseType.Running),
         ("assignment", "global", TestCaseType.Running),
@@ -61,10 +69,10 @@ public static class TestDefinitionProvider
         ("call", "string", TestCaseType.Running),
 
         ("class", "empty", TestCaseType.Running),
-        //("class", "inherited_method", TestCaseType.Running),
-        //("class", "inherit_self", TestCaseType.Running),
-        //("class", "local_inherit_other", TestCaseType.Running),
-        //("class", "local_inherit_self", TestCaseType.Running),
+        ("class", "inherited_method", TestCaseType.Running),
+        ("class", "inherit_self", TestCaseType.Running),
+        ("class", "local_inherit_other", TestCaseType.Running),
+        ("class", "local_inherit_self", TestCaseType.Running),
         ("class", "local_reference_self", TestCaseType.Running),
         ("class", "reference_self", TestCaseType.Running),
 
@@ -164,13 +172,13 @@ public static class TestDefinitionProvider
         ("if", "var_in_else", TestCaseType.Running),
         ("if", "var_in_then", TestCaseType.Running),
 
-        //("inheritance", "constructor", TestCaseType.Running),
-        //("inheritance", "inherit_from_function", TestCaseType.Running),
-        //("inheritance", "inherit_from_nil", TestCaseType.Running),
-        //("inheritance", "inherit_from_number", TestCaseType.Running),
-        //("inheritance", "inherit_methods", TestCaseType.Running),
-        //("inheritance", "parenthesized_superclass", TestCaseType.Running),
-        //("inheritance", "set_fields_from_base_class", TestCaseType.Running),
+        ("inheritance", "constructor", TestCaseType.Running),
+        ("inheritance", "inherit_from_function", TestCaseType.Running),
+        ("inheritance", "inherit_from_nil", TestCaseType.Running),
+        ("inheritance", "inherit_from_number", TestCaseType.Running),
+        ("inheritance", "inherit_methods", TestCaseType.Running),
+        ("inheritance", "parenthesized_superclass", TestCaseType.Running),
+        ("inheritance", "set_fields_from_base_class", TestCaseType.Running),
 
         //("limit", "loop_too_large", TestCaseType.Running),
         //("limit", "no_reuse_constants", TestCaseType.Running),
@@ -238,8 +246,8 @@ public static class TestDefinitionProvider
 
         ("print", "missing_argument", TestCaseType.Running),
 
-        //("regression", "394", TestCaseType.Running),
-        //("regression", "40", TestCaseType.Running),
+        ("regression", "394", TestCaseType.Running),
+        ("regression", "40", TestCaseType.Running),
 
         ("return", "after_else", TestCaseType.Running),
         ("return", "after_if", TestCaseType.Running),
@@ -261,26 +269,26 @@ public static class TestDefinitionProvider
         ("string", "multiline", TestCaseType.Running),
         ("string", "unterminated", TestCaseType.Running),
 
-        //("super", "bound_method", TestCaseType.Running),
-        //("super", "call_other_method", TestCaseType.Running),
-        //("super", "call_same_method", TestCaseType.Running),
-        //("super", "closure", TestCaseType.Running),
-        //("super", "constructor", TestCaseType.Running),
-        //("super", "extra_arguments", TestCaseType.Running),
-        //("super", "indirectly_inherited", TestCaseType.Running),
-        //("super", "missing_arguments", TestCaseType.Running),
-        //("super", "no_superclass_bind", TestCaseType.Running),
-        //("super", "no_superclass_call", TestCaseType.Running),
-        //("super", "no_superclass_method", TestCaseType.Running),
-        //("super", "parenthesized", TestCaseType.Running),
-        //("super", "reassign_superclass", TestCaseType.Running),
-        //("super", "super_at_top_level", TestCaseType.Running),
-        //("super", "super_in_closure_in_inherited_method", TestCaseType.Running),
-        //("super", "super_in_inherited_method", TestCaseType.Running),
-        //("super", "super_in_top_level_function", TestCaseType.Running),
-        //("super", "super_without_dot", TestCaseType.Running),
-        //("super", "super_without_name", TestCaseType.Running),
-        //("super", "this_in_superclass_method", TestCaseType.Running),
+        ("super", "bound_method", TestCaseType.Running),
+        ("super", "call_other_method", TestCaseType.Running),
+        ("super", "call_same_method", TestCaseType.Running),
+        ("super", "closure", TestCaseType.Running),
+        ("super", "constructor", TestCaseType.Running),
+        ("super", "extra_arguments", TestCaseType.Running),
+        ("super", "indirectly_inherited", TestCaseType.Running),
+        ("super", "missing_arguments", TestCaseType.Running),
+        ("super", "no_superclass_bind", TestCaseType.Running),
+        ("super", "no_superclass_call", TestCaseType.Running),
+        ("super", "no_superclass_method", TestCaseType.Running),
+        ("super", "parenthesized", TestCaseType.Running),
+        ("super", "reassign_superclass", TestCaseType.Running),
+        ("super", "super_at_top_level", TestCaseType.Running),
+        ("super", "super_in_closure_in_inherited_method", TestCaseType.Running),
+        ("super", "super_in_inherited_method", TestCaseType.Running),
+        ("super", "super_in_top_level_function", TestCaseType.Running),
+        ("super", "super_without_dot", TestCaseType.Running),
+        ("super", "super_without_name", TestCaseType.Running),
+        ("super", "this_in_superclass_method", TestCaseType.Running),
 
         ("this", "closure", TestCaseType.Running),
         ("this", "nested_class", TestCaseType.Running),

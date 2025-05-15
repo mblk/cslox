@@ -36,6 +36,7 @@
 [AstGen("Get      : Expr object, Token name")]
 [AstGen("Set      : Expr object, Token name, Expr value")]
 [AstGen("This     : Token token")]
+[AstGen("Super    : Token token")]
 public abstract partial class Expr
 {
     public int? HopsToEnv { get; set; }
@@ -55,7 +56,7 @@ public abstract partial class Expr
 [AstGen("Var        : Token name, Expr? initializer")]
 [AstGen("Function   : Token name, Expr.Function fun")]
 [AstGen("Return     : Token token, Expr? expr")]
-[AstGen("Class      : Token name, IReadOnlyList<Method> methods")]
+[AstGen("Class      : Token name, Expr.Variable? superclass, IReadOnlyList<Method> methods")]
 [AstGen("Method     : Token name, Expr.Function fun")]
 public abstract partial class Stmt
 {

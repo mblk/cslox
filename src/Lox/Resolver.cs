@@ -27,6 +27,7 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
     {
         None,
         Class,
+        SubClass,
     }
 
     private enum CurrentFunction
@@ -59,8 +60,7 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
     {
         BeginScope(); // implicit global scope
 
-        Declare("clock", null);
-        Define("clock");
+        DeclareAndDefine("clock", null);
 
         Resolve(statements);
         EndScope();
@@ -177,10 +177,26 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
             Declare(@class.Name.Lexeme, @class.Name);
             Define(@class.Name.Lexeme);
 
-            BeginScope(); // This is the scope that methods are bound to.
+            if (@class.Superclass is not null)
             {
-                Declare("this", @class.Name);
-                Define("this");
+                _currentClass = CurrentClass.SubClass;
+
+                if (@class.Name.Lexeme == @class.Superclass.Name.Lexeme)
+                {
+                    Error(@class.Superclass.Name, "A class can't inherit from itself.");
+                }
+                else
+                {
+                    Resolve(@class.Superclass);
+                }
+
+                BeginScope(); // This is the scope that contains the 'super' definition (created at runtime when a class is declared).
+                DeclareAndDefine("super", @class.Superclass.Name);
+            }
+
+            BeginScope(); // This is the scope that methods are bound to (created at runtime when a method is accessed).
+            {
+                DeclareAndDefine("this", @class.Name);
 
                 foreach (var method in @class.Methods)
                 {
@@ -188,6 +204,11 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
                 }
             }
             EndScope();
+
+            if (@class.Superclass is not null)
+            {
+                EndScope();
+            }
         }
         _currentClass = prevClass;
 
@@ -316,7 +337,7 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
 
     public Nothing VisitThisExpr(Expr.This @this)
     {
-        if (_currentClass != CurrentClass.Class)
+        if (_currentClass == CurrentClass.None)
         {
             Error(@this.Token, "Can't use 'this' outside of a class.");
             return new Nothing();
@@ -329,6 +350,31 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
         else
         {
             throw new InvalidOperationException("Internal error. This not found in surrounding scopes.");
+        }
+
+        return new Nothing();
+    }
+
+    public Nothing VisitSuperExpr(Expr.Super super)
+    {
+        if (_currentClass == CurrentClass.None)
+        {
+            Error(super.Token, "Can't use 'super' outside of a class.");
+            return new Nothing();
+        }
+        else if (_currentClass != CurrentClass.SubClass)
+        {
+            Error(super.Token, "Can't use 'super' in a class with no superclass.");
+            return new Nothing();
+        }
+
+        if (FindInScopes("super", out var hops))
+        {
+            SaveResolution(super, hops);
+        }
+        else
+        {
+            throw new InvalidOperationException("Internal error. Super not found in surrounding scopes.");
         }
 
         return new Nothing();
@@ -348,6 +394,12 @@ public class Resolver : Expr.IVisitor<Nothing>, Stmt.IVisitor<Nothing>
     private void EndScope()
     {
         _ = _scopes.Pop();
+    }
+
+    private void DeclareAndDefine(string name, Token? token)
+    {
+        Declare(name, token);
+        Define(name);
     }
 
     private void Declare(string name, Token? token)

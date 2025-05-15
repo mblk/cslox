@@ -28,21 +28,21 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Anonymous functions
     - [x] Semantic analysis
     - [x] Classes
-    - [ ] Inheritance
+    - [x] Inheritance
     - [ ] ...
 - Phase 2: Bytecode & VM
     - [ ] ...
 
 ## Building / Running
 
-```bash
+```
 $ cd src/Lox/
 $ dotnet run
 ```
 
 ## Using the REPL
 
-```bash
+```
 $ cd src/Lox/
 $ dotnet run
 > print 1 + 2;
@@ -54,7 +54,7 @@ $
 
 ## Interpreting lox source files
 
-```bash
+```
 $ cd src/Lox/
 $ dotnet run -- ..\..\scripts\test.lox
 hello lox!

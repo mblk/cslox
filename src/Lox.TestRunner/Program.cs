@@ -79,12 +79,11 @@ public static class Program
             _ => "",
         };
 
-
         var testParser = new TestFileParser(fileInfo.FullName);
         var expectedOutputs = testParser.Parse().ToArray();
 
         var interpreterRunner = new InterpreterRunner();
-        var (outputLines, exitCode) = interpreterRunner.Run(fileInfo.FullName, args); //.ToArray();
+        var (outputLines, exitCode) = interpreterRunner.Run(fileInfo.FullName, args);
 
         var validator = new TestValidator(expectedOutputs, outputLines);
         if (exitCode != 0)
