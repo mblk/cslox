@@ -95,8 +95,13 @@ size_t disassemble_instruction(const chunk_t* chunk, size_t offset)
 
     const uint8_t opcode = chunk->code[offset];
     switch (opcode) {
-        case OP_CONST:   return constant_instruction(chunk, "OP_CONST", offset);
+        case OP_CONST:      return constant_instruction(chunk, "OP_CONST", offset);
         case OP_CONST_LONG: return long_constant_instruction(chunk, "OP_CONST_LONG", offset);
+        case OP_NEGATE:     return simple_instruction("OP_NEGATE");
+        case OP_ADD:        return simple_instruction("OP_ADD");
+        case OP_SUB:        return simple_instruction("OP_SUB");
+        case OP_MUL:        return simple_instruction("OP_MUL");
+        case OP_DIV:        return simple_instruction("OP_DIV");
         case OP_RETURN:     return simple_instruction("OP_RETURN");
         default:            return unknown_instruction(opcode);
     }

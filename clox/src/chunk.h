@@ -10,6 +10,13 @@ typedef enum {      // args:
     OP_CONST,       // index
     OP_CONST_LONG,  // index0, index1, index2, index3
 
+    OP_NEGATE,      // -
+
+    OP_ADD,         // -
+    OP_SUB,         // -
+    OP_MUL,         // -
+    OP_DIV,         // -
+
     OP_RETURN,      // -
 
 } OpCode;
