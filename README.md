@@ -31,6 +31,11 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Inheritance
     - [ ] ...
 - Phase 2: Bytecode & VM
+    - [x] Chunks of bytecode
+    - [x] Basic VM
+    - [x] REPL
+    - [x] Scanning
+    - [ ] Parsing
     - [ ] ...
 
 ## Building / Running
