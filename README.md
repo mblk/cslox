@@ -1,4 +1,4 @@
-# cslox - C# implementation of the LOX language
+# cslox - C# (and C) implementation of the LOX language
 
 This repository contains my implementation of the [lox language] following the book [Crafting Interpreters] by [Bob Nystrom].
 
