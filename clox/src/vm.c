@@ -72,7 +72,7 @@ run_result_t vm_run(vm_t* vm, const chunk_t* chunk)
         const uint8_t opcode = READ_BYTE();
         switch (opcode) {
         
-            case OP_CONST:      PUSH(READ_CONST()); break;
+            case OP_CONST:      PUSH(READ_CONST());      break;
             case OP_CONST_LONG: PUSH(READ_CONST_LONG()); break;
 
             case OP_NEGATE: UNARY_OP(-); break;
