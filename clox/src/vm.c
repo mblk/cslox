@@ -1,11 +1,13 @@
 #include "vm.h"
 #include "chunk.h"
 #include "debug.h"
+#include "compiler.h"
 
 #include <assert.h>
 #include <stdio.h>
 
 #define VM_TRACE_EXECUTION
+#define VM_PRINT_CODE
 
 void vm_init(vm_t* vm)
 {
@@ -22,7 +24,30 @@ void vm_free(vm_t* vm)
     assert(vm);
 }
 
-run_result_t vm_run(vm_t* vm, const chunk_t* chunk)
+run_result_t vm_run_source(vm_t* vm, const char* source)
+{
+    run_result_t result = RUN_OK;
+
+    chunk_t chunk;
+    chunk_init(&chunk);
+    {
+        if (compile(&chunk, source)) {
+
+            #ifdef VM_PRINT_CODE
+                disassemble_chunk(&chunk, "Code");
+            #endif
+
+            result = vm_run_chunk(vm, &chunk);
+        } else {
+            result = RUN_COMPILE_ERROR;
+        }
+    }
+    chunk_free(&chunk);
+
+    return result;
+}
+
+run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
 {
     assert(vm);
     assert(vm->chunk == NULL);

@@ -10,6 +10,9 @@ typedef struct {
 } scanner_t;
 
 typedef enum {
+
+    TOKEN_NONE,
+
     // Single-character tokens.
     TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN,
     TOKEN_LEFT_BRACE, TOKEN_RIGHT_BRACE,
@@ -28,7 +31,12 @@ typedef enum {
     TOKEN_PRINT, TOKEN_RETURN, TOKEN_SUPER, TOKEN_THIS,
     TOKEN_TRUE, TOKEN_VAR, TOKEN_WHILE,
     TOKEN_ERROR,
-    TOKEN_EOF
+    TOKEN_EOF,
+
+    // experimental
+    TOKEN_QUESTION,
+    TOKEN_COLON,
+
 } token_type_t;
 
 typedef struct {
@@ -43,7 +51,5 @@ void scanner_init(scanner_t* scanner, const char* source);
 token_t scan_token(scanner_t* scanner);
 
 const char* token_type_to_string(token_type_t type);
-
-
 
 #endif

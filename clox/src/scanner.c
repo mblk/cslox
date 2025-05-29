@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 void scanner_init(scanner_t* scanner, const char* source)
@@ -83,6 +84,8 @@ static void skip_whitespace(scanner_t* scanner)
 
 static token_t make_token(const scanner_t* scanner, token_type_t type)
 {
+    //printf("make token %d %s\n", type, token_type_to_string(type));
+
     token_t token;
     token.type = type;
     token.line = scanner->line;
@@ -123,8 +126,8 @@ static bool is_digit(char c)
 
 static bool is_alpha(char c)
 {
-    return c >= 'a' && c <= 'z' ||
-           c >= 'A' && c <= 'Z' ||
+    return (c >= 'a' && c <= 'z') ||
+           (c >= 'A' && c <= 'Z') ||
            c == '_';
 }
 
@@ -189,6 +192,7 @@ static token_type_t identifier_type(const scanner_t *scanner)
                     case 'o': return check_keyword(scanner, 2, 6, "ntinue", TOKEN_CONTINUE);
                 }
             }
+            break;
 
         case 'f':
             if (scanner->current - scanner->start > 1) {
@@ -254,6 +258,10 @@ token_t scan_token(scanner_t* scanner)
         case '/': return make_token(scanner, TOKEN_SLASH);
         case '*': return make_token(scanner, TOKEN_STAR);
 
+        // experimental
+        case '?': return make_token(scanner, TOKEN_QUESTION);
+        case ':': return make_token(scanner, TOKEN_COLON);
+
         case '!': return make_token(scanner, match(scanner, '=') ? TOKEN_BANG_EQUAL    : TOKEN_BANG);
         case '=': return make_token(scanner, match(scanner, '=') ? TOKEN_EQUAL_EQUAL   : TOKEN_EQUAL);
         case '<': return make_token(scanner, match(scanner, '=') ? TOKEN_LESS_EQUAL    : TOKEN_LESS);
@@ -266,6 +274,7 @@ token_t scan_token(scanner_t* scanner)
 const char* token_type_to_string(token_type_t type)
 {
     switch (type) {
+        case TOKEN_NONE: return "NONE";
         case TOKEN_LEFT_PAREN: return "LEFT_PAREN";
         case TOKEN_RIGHT_PAREN: return "RIGHT_PAREN";
         case TOKEN_LEFT_BRACE: return "LEFT_BRACE";
@@ -308,6 +317,11 @@ const char* token_type_to_string(token_type_t type)
         case TOKEN_WHILE: return "WHILE";
         case TOKEN_ERROR: return "ERROR";
         case TOKEN_EOF: return "EOF";
+
+        // experimental
+        case TOKEN_QUESTION: return "QUESTION";
+        case TOKEN_COLON: return "COLON";
+
         default:
             assert(!"Missing case in token_type_to_string");
             return "???";

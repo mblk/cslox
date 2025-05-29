@@ -1,6 +1,6 @@
 CC=gcc
 LD=gcc
-CFLAGS=-c -Wall -Wextra #-Werror
+CFLAGS=-c -g -Wall -Wextra #-Werror
 LIBS=
 LDFLAGS=
 

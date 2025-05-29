@@ -26,7 +26,8 @@ typedef enum {
 void vm_init(vm_t* vm);
 void vm_free(vm_t* vm);
 
-run_result_t vm_run(vm_t* vm, const chunk_t* chunk);
+run_result_t vm_run_source(vm_t* vm, const char* source);
+run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk);
 
 void vm_stack_dump(const vm_t *vm);
 void vm_stack_push(vm_t* vm, value_t value);
