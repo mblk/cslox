@@ -115,8 +115,8 @@ int main_(const int argc, const char *const argv[const argc]) {
         chunk_t chunk;
         chunk_init(&chunk);
 
-        chunk_write_const(&chunk, 1.2345, 1);
-        chunk_write_const(&chunk, 5.4321, 2);
+        chunk_write_const(&chunk, NUMBER_VALUE(1.2345), 1);
+        chunk_write_const(&chunk, NUMBER_VALUE(5.4321), 2);
 
         chunk_write8(&chunk, OP_MUL, 3);
 

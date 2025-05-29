@@ -32,5 +32,6 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk);
 void vm_stack_dump(const vm_t *vm);
 void vm_stack_push(vm_t* vm, value_t value);
 value_t vm_stack_pop(vm_t* vm);
+value_t vm_stack_peek(vm_t* vm, int offset);
 
 #endif

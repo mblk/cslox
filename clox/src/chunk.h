@@ -10,7 +10,17 @@ typedef enum {      // args:
     OP_CONST,       // index
     OP_CONST_LONG,  // index0, index1, index2, index3
 
+    OP_NIL,         // -
+    OP_TRUE,        // -
+    OP_FALSE,       // -
+
+    OP_NOT,         // -
     OP_NEGATE,      // -
+
+    // next:
+    //OP_EQUAL,       // -
+    //OP_GREATER,     // -
+    //OP_LESS,        // -
 
     OP_ADD,         // -
     OP_SUB,         // -
@@ -51,5 +61,7 @@ void chunk_write_const(chunk_t* chunk, value_t value, uint32_t line);
 size_t chunk_add_value(chunk_t* chunk, value_t value); // TODO make private?
 
 void chunk_dump(const chunk_t* chunk);
+
+uint32_t chunk_get_line_for_offset(const chunk_t* chunk, size_t offset);
 
 #endif

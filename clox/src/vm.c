@@ -4,6 +4,7 @@
 #include "compiler.h"
 
 #include <assert.h>
+#include <stdarg.h>
 #include <stdio.h>
 
 #define VM_TRACE_EXECUTION
@@ -22,6 +23,26 @@ void vm_init(vm_t* vm)
 void vm_free(vm_t* vm)
 {
     assert(vm);
+}
+
+static void reset_stack(vm_t* vm)
+{
+    // TODO
+}
+
+static void runtime_error(vm_t* vm, const char* format, ...)
+{
+    const size_t offset = vm->ip - vm->chunk->code - 1;
+    const uint32_t line = chunk_get_line_for_offset(vm->chunk, offset);
+    fprintf(stderr, "[Line %u] Runtime error: ", line);
+ 
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fputs("\n", stderr);
+
+    reset_stack(vm);
 }
 
 run_result_t vm_run_source(vm_t* vm, const char* source)
@@ -69,19 +90,30 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
 
     #define PUSH(value)         vm_stack_push(vm, value)
     #define POP()               vm_stack_pop(vm)
+    #define PEEK(offset)        vm_stack_peek(vm, offset)
 
-    #define UNARY_OP(op) \
+    #define ERROR(args...)      runtime_error(vm, args)
+
+    #define UNARY_NUMBER_OP(op) \
         do { \
+            if (!IS_NUMBER(PEEK(0))) { \
+                ERROR("Operand must be number"); \
+                return RUN_RUNTIME_ERROR; \
+            } \
             value_t right = POP(); \
-            value_t result = op right; \
+            value_t result = NUMBER_VALUE(op AS_NUMBER(right)); \
             PUSH(result); \
         } while (false)
 
-    #define BINARY_OP(op) \
+    #define BINARY_NUMBER_OP(op) \
         do { \
+            if (!IS_NUMBER(PEEK(1)) || !IS_NUMBER(PEEK(1))) { \
+                ERROR("Operands must be numbers"); \
+                return RUN_RUNTIME_ERROR; \
+            } \
             value_t right = POP(); \
             value_t left = POP(); \
-            value_t result = left op right; \
+            value_t result = NUMBER_VALUE(AS_NUMBER(left) op AS_NUMBER(right)); \
             PUSH(result); \
         } while (false)
 
@@ -100,17 +132,24 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
             case OP_CONST:      PUSH(READ_CONST());      break;
             case OP_CONST_LONG: PUSH(READ_CONST_LONG()); break;
 
-            case OP_NEGATE: UNARY_OP(-); break;
+            case OP_NIL:   PUSH(NIL_VALUE());       break;
+            case OP_TRUE:  PUSH(BOOL_VALUE(true));  break;
+            case OP_FALSE: PUSH(BOOL_VALUE(false)); break;
 
-            case OP_ADD: BINARY_OP(+); break;
-            case OP_SUB: BINARY_OP(-); break;
-            case OP_MUL: BINARY_OP(*); break;
-            case OP_DIV: BINARY_OP(/); break;
+            case OP_NOT: PUSH(BOOL_VALUE(value_is_falsey(POP()))); break;
+            case OP_NEGATE: UNARY_NUMBER_OP(-); break;
+
+            case OP_ADD: BINARY_NUMBER_OP(+); break;
+            case OP_SUB: BINARY_NUMBER_OP(-); break;
+            case OP_MUL: BINARY_NUMBER_OP(*); break;
+            case OP_DIV: BINARY_NUMBER_OP(/); break;
 
             case OP_RETURN:
             {
                 value_t value = POP();
-                printf("Return: %lf\n", value);
+                printf("Return: ");
+                print_value(value);
+                printf("\n");
                 return RUN_OK;
             }
 
@@ -139,7 +178,8 @@ void vm_stack_dump(const vm_t *vm)
     printf("Stack: [");
 
     for (const value_t *slot = vm->stack; slot < vm->sp; slot++) {
-        printf("%lf ", *slot);
+        print_value(*slot);
+        printf(" ");
     }
 
     printf("] (top)\n");
@@ -165,4 +205,14 @@ value_t vm_stack_pop(vm_t* vm)
     //printf("pop %lf\n", value);
 
     return value;
+}
+
+value_t vm_stack_peek(vm_t* vm, int offset)
+{
+    assert(offset >= 0);
+    // sp[0] -> next free slot
+    // sp[-1] -> most recent value
+    // sp[-2] -> second most recent value
+    // ...
+    return vm->sp[-1 - offset];
 }

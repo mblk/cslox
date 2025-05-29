@@ -137,3 +137,22 @@ void chunk_dump(const chunk_t *chunk)
 
     value_array_dump(&chunk->values);
 }
+
+uint32_t chunk_get_line_for_offset(const chunk_t* chunk, size_t offset)
+{
+    assert(chunk);
+
+    size_t current_offset = 0;
+
+    for (size_t i = 0; i<chunk->line_infos_count; i++) {
+
+        if (offset < current_offset + chunk->line_infos[i].bytes) {
+            return chunk->line_infos[i].line;
+        }
+
+        current_offset += chunk->line_infos[i].bytes;
+    }
+
+    assert(!"could not find line for offset");
+    return 0;
+}
