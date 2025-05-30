@@ -1,4 +1,3 @@
-#include "common.h"
 #include "chunk.h"
 #include "debug.h"
 #include "vm.h"
@@ -7,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 
 static int interpret(const char *source) {
     assert(source);
@@ -39,6 +39,10 @@ static int run_repl(void) {
             // ctrl+d
             printf("Bye.\n");
             break;
+        }
+
+        if (strlen(line) == 1 && line[0] == '\n') {
+            continue;
         }
 
         interpret(line);

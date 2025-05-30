@@ -22,7 +22,7 @@ void value_array_free(value_array_t* array)
     array->count = 0;
 }
 
-void value_array_write(value_array_t* array, value_t value)
+size_t value_array_write(value_array_t* array, value_t value)
 {
     assert(array);
 
@@ -32,7 +32,12 @@ void value_array_write(value_array_t* array, value_t value)
         array->values = GROW_ARRAY(value_t, array->values, old_capacity, array->capacity);
     }
 
-    array->values[array->count++] = value;
+    const size_t insert_index = array->count;
+
+    array->values[insert_index] = value;
+    array->count++;
+
+    return insert_index;
 }
 
 void value_array_dump(const value_array_t* array)

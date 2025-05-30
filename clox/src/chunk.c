@@ -80,22 +80,13 @@ void chunk_write32(chunk_t* chunk, uint32_t data, uint32_t line)
     chunk_write8(chunk, p[3], line);
 }
 
-uint32_t chunk_read32(const chunk_t* chunk, size_t offset)
-{
-    assert(chunk);
-
-    uint32_t ret = 0;
-    memcpy(&ret, chunk->code + offset, sizeof(uint32_t));
-    return ret;
-}
-
 void chunk_write_const(chunk_t* chunk, value_t value, uint32_t line)
 {
     assert(chunk);
 
     // TODO: reuse existing values?
 
-    const size_t index = chunk_add_value(chunk, value);
+    const size_t index = value_array_write(&chunk->values, value);
 
     if (index < 256) {
         chunk_write8(chunk, OP_CONST, line);
@@ -106,13 +97,13 @@ void chunk_write_const(chunk_t* chunk, value_t value, uint32_t line)
     }
 }
 
-size_t chunk_add_value(chunk_t* chunk, value_t value)
+uint32_t chunk_read32(const chunk_t* chunk, size_t offset)
 {
     assert(chunk);
 
-    size_t idx = chunk->values.count;
-    value_array_write(&chunk->values, value);
-    return idx;
+    uint32_t ret = 0;
+    memcpy(&ret, chunk->code + offset, sizeof(uint32_t));
+    return ret;
 }
 
 void chunk_dump(const chunk_t *chunk)

@@ -41,7 +41,7 @@ typedef struct value_array {
 void value_array_init(value_array_t* array);
 void value_array_free(value_array_t* array);
 
-void value_array_write(value_array_t* array, value_t value);
+size_t value_array_write(value_array_t* array, value_t value);
 void value_array_dump(const value_array_t* array);
 
 void print_value(value_t value);

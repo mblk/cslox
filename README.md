@@ -12,7 +12,7 @@ This repository contains my implementation of the [lox language] following the b
 - Phase 1: Tree walking interpreter
     - [x] REPL
     - [x] Lexing/Scanning
-    - [x] Parsing
+    - [x] Parsing (Recursive descent)
     - [x] Source generator for AST classes
     - [x] Visitor pattern
     - [x] Expression evaluation
@@ -35,7 +35,10 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Basic VM
     - [x] REPL
     - [x] Scanning
-    - [ ] Parsing
+    - [x] Parsing (Pratt)
+    - [x] Compiling
+    - [ ] Value types (nil, bool, number)
+    - [ ] String values
     - [ ] ...
 
 ## Building / Running

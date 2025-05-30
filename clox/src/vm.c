@@ -27,6 +27,7 @@ void vm_free(vm_t* vm)
 
 static void reset_stack(vm_t* vm)
 {
+    (void)vm;
     // TODO
 }
 

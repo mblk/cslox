@@ -53,12 +53,9 @@ void chunk_free(chunk_t* chunk);
 
 void chunk_write8(chunk_t* chunk, uint8_t data, uint32_t line);
 void chunk_write32(chunk_t* chunk, uint32_t data, uint32_t line);
-
-uint32_t chunk_read32(const chunk_t* chunk, size_t offset);
-
 void chunk_write_const(chunk_t* chunk, value_t value, uint32_t line);
 
-size_t chunk_add_value(chunk_t* chunk, value_t value); // TODO make private?
+uint32_t chunk_read32(const chunk_t* chunk, size_t offset);
 
 void chunk_dump(const chunk_t* chunk);
 
