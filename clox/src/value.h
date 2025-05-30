@@ -49,4 +49,6 @@ void print_value(value_t value);
 bool value_is_truey(value_t value);
 bool value_is_falsey(value_t value);
 
+bool values_equal(value_t a, value_t b);
+
 #endif

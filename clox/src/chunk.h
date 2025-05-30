@@ -17,10 +17,18 @@ typedef enum {      // args:
     OP_NOT,         // -
     OP_NEGATE,      // -
 
-    // next:
-    //OP_EQUAL,       // -
-    //OP_GREATER,     // -
-    //OP_LESS,        // -
+    OP_EQUAL,       // -
+    OP_GREATER,     // -
+    OP_LESS,        // -
+    // direct:
+    // a == b
+    // a > b
+    // a < b
+    // indirect:
+    // a != b   via   !(a == b)
+    // a >= b   via   !(a < b)
+    // a <= b   via   !(a > b)
+
 
     OP_ADD,         // -
     OP_SUB,         // -

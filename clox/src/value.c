@@ -86,3 +86,25 @@ bool value_is_falsey(value_t value) {
     }
     return false;
 }
+
+bool values_equal(value_t a, value_t b)
+{
+    if (a.type != b.type) {
+        return false;
+    }
+
+    switch (a.type) {
+        case VALUE_TYPE_NIL:
+            return true;
+
+        case VALUE_TYPE_BOOL:
+            return AS_BOOL(a) == AS_BOOL(b);
+
+        case VALUE_TYPE_NUMBER:
+            return AS_NUMBER(a) == AS_NUMBER(b);
+
+        default:
+            assert(!"Missing case in values_equal");
+            return false;
+    }
+}

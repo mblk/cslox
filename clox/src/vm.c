@@ -2,6 +2,7 @@
 #include "chunk.h"
 #include "debug.h"
 #include "compiler.h"
+#include "value.h"
 
 #include <assert.h>
 #include <stdarg.h>
@@ -106,7 +107,15 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
             PUSH(result); \
         } while (false)
 
-    #define BINARY_NUMBER_OP(op) \
+    #define BINARY_FN_OP(result_type, fn) \
+        do { \
+            value_t right = POP(); \
+            value_t left = POP(); \
+            value_t result = result_type(fn(left, right)); \
+            PUSH(result); \
+        } while (false)
+
+    #define BINARY_NUMBER_OP(result_type, op) \
         do { \
             if (!IS_NUMBER(PEEK(1)) || !IS_NUMBER(PEEK(1))) { \
                 ERROR("Operands must be numbers"); \
@@ -114,7 +123,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
             } \
             value_t right = POP(); \
             value_t left = POP(); \
-            value_t result = NUMBER_VALUE(AS_NUMBER(left) op AS_NUMBER(right)); \
+            value_t result = result_type(AS_NUMBER(left) op AS_NUMBER(right)); \
             PUSH(result); \
         } while (false)
 
@@ -133,17 +142,21 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
             case OP_CONST:      PUSH(READ_CONST());      break;
             case OP_CONST_LONG: PUSH(READ_CONST_LONG()); break;
 
-            case OP_NIL:   PUSH(NIL_VALUE());       break;
-            case OP_TRUE:  PUSH(BOOL_VALUE(true));  break;
-            case OP_FALSE: PUSH(BOOL_VALUE(false)); break;
+            case OP_NIL:    PUSH(NIL_VALUE());       break;
+            case OP_TRUE:   PUSH(BOOL_VALUE(true));  break;
+            case OP_FALSE:  PUSH(BOOL_VALUE(false)); break;
 
-            case OP_NOT: PUSH(BOOL_VALUE(value_is_falsey(POP()))); break;
+            case OP_NOT:    PUSH(BOOL_VALUE(value_is_falsey(POP()))); break;
             case OP_NEGATE: UNARY_NUMBER_OP(-); break;
 
-            case OP_ADD: BINARY_NUMBER_OP(+); break;
-            case OP_SUB: BINARY_NUMBER_OP(-); break;
-            case OP_MUL: BINARY_NUMBER_OP(*); break;
-            case OP_DIV: BINARY_NUMBER_OP(/); break;
+            case OP_EQUAL:   BINARY_FN_OP(BOOL_VALUE, values_equal); break;
+            case OP_GREATER: BINARY_NUMBER_OP(BOOL_VALUE, >); break;
+            case OP_LESS:    BINARY_NUMBER_OP(BOOL_VALUE, <); break;
+
+            case OP_ADD: BINARY_NUMBER_OP(NUMBER_VALUE, +); break;
+            case OP_SUB: BINARY_NUMBER_OP(NUMBER_VALUE, -); break;
+            case OP_MUL: BINARY_NUMBER_OP(NUMBER_VALUE, *); break;
+            case OP_DIV: BINARY_NUMBER_OP(NUMBER_VALUE, /); break;
 
             case OP_RETURN:
             {
