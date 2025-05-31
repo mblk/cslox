@@ -1,8 +1,15 @@
+
+SAN=-fsanitize=address,undefined,bounds,leak,signed-integer-overflow
+
 CC=gcc
 LD=gcc
-CFLAGS=-c -g -Wall -Wextra #-Werror
+
+#CC=clang
+#LD=clang
+
+CFLAGS=-c -g -Wall -Wextra $(SAN) #-Werror
 LIBS=
-LDFLAGS=
+LDFLAGS=$(SAN)
 
 SRC := $(wildcard src/*.c)
 OBJ := $(patsubst src/%.c,obj/%.o,$(SRC))

@@ -11,10 +11,9 @@
 static int interpret(const char *source) {
     assert(source);
 
-    vm_t vm;
-    vm_init(&vm);
+    vm_t* const vm = vm_create();
     {
-        const run_result_t result = vm_run_source(&vm, source);
+        const run_result_t result = vm_run_source(vm, source);
 
         printf("Result: ");
         switch (result) {
@@ -24,7 +23,7 @@ static int interpret(const char *source) {
             default:                printf("unknown error\n"); break;
         }
     }
-    vm_free(&vm);
+    vm_destroy(vm);
 
     return 0;
 }
@@ -113,8 +112,7 @@ int main_(const int argc, const char *const argv[const argc]) {
     (void)argc;
     (void)argv;
 
-    vm_t vm;
-    vm_init(&vm);
+    vm_t* const vm = vm_create();
     {
         chunk_t chunk;
         chunk_init(&chunk);
@@ -133,7 +131,7 @@ int main_(const int argc, const char *const argv[const argc]) {
         disassemble_chunk(&chunk, "My chunk");
 
         printf("Running...\n");
-        run_result_t result = vm_run_chunk(&vm, &chunk);
+        run_result_t result = vm_run_chunk(vm, &chunk);
 
         printf("Result: ");
         switch (result) {
@@ -145,7 +143,7 @@ int main_(const int argc, const char *const argv[const argc]) {
 
         chunk_free(&chunk);
     }
-    vm_free(&vm);
+    vm_destroy(vm);
 
     return 0;
 }

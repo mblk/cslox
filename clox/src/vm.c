@@ -2,28 +2,56 @@
 #include "chunk.h"
 #include "debug.h"
 #include "compiler.h"
+#include "memory.h"
 #include "value.h"
+#include "object.h"
 
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define VM_TRACE_EXECUTION
 #define VM_PRINT_CODE
 
-void vm_init(vm_t* vm)
+typedef struct vm {
+    const chunk_t* chunk;
+    const uint8_t* ip;
+
+    value_t stack[VM_STACK_MAX];
+    value_t* sp;
+
+    object_root_t root;
+
+} vm_t;
+
+vm_t* vm_create(void)
 {
+    vm_t *vm = (vm_t*)malloc(sizeof(vm_t));
     assert(vm);
+
+    memset(vm, 0, sizeof(vm_t));
 
     vm->chunk = NULL;
     vm->ip = NULL;
 
     vm->sp = vm->stack; // sp points to next free slot
+
+    vm->root.first = NULL;
+
+    return vm;
 }
 
-void vm_free(vm_t* vm)
+void vm_destroy(vm_t* vm)
 {
     assert(vm);
+
+    dump_objects(&vm->root);
+
+    free_objects(&vm->root);
+
+    free(vm);
 }
 
 static void reset_stack(vm_t* vm)
@@ -68,6 +96,28 @@ run_result_t vm_run_source(vm_t* vm, const char* source)
     chunk_free(&chunk);
 
     return result;
+}
+
+static void concatenate(vm_t* vm) {
+    const value_t right_value = vm_stack_pop(vm);
+    const value_t left_value = vm_stack_pop(vm);
+
+    assert(IS_STRING(left_value));
+    assert(IS_STRING(right_value));
+
+    const string_object_t* left = AS_STRING(left_value);
+    const string_object_t* right = AS_STRING(right_value);
+
+    const size_t length = left->length + right->length;
+
+    string_object_t* result = create_emppy_string_object(&vm->root, length);
+    assert(result);
+
+    memcpy(result->chars, left->chars, left->length);
+    memcpy(result->chars + left->length, right->chars, right->length);
+    // terminating 0 already set
+
+    vm_stack_push(vm, OBJECT_VALUE((object_t*)result));
 }
 
 run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
@@ -153,7 +203,19 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
             case OP_GREATER: BINARY_NUMBER_OP(BOOL_VALUE, >); break;
             case OP_LESS:    BINARY_NUMBER_OP(BOOL_VALUE, <); break;
 
-            case OP_ADD: BINARY_NUMBER_OP(NUMBER_VALUE, +); break;
+            case OP_ADD: {
+                const value_t left = PEEK(1);
+                const value_t right = PEEK(0);
+
+                if (IS_STRING(left) && IS_STRING(right)) {
+                    concatenate(vm);
+                } else if (IS_NUMBER(left) && IS_NUMBER(right)) {
+                    BINARY_NUMBER_OP(NUMBER_VALUE, +);
+                } else {
+                    ERROR("Operands must be two numbers or two strings.");
+                }
+                break;
+            }
             case OP_SUB: BINARY_NUMBER_OP(NUMBER_VALUE, -); break;
             case OP_MUL: BINARY_NUMBER_OP(NUMBER_VALUE, *); break;
             case OP_DIV: BINARY_NUMBER_OP(NUMBER_VALUE, /); break;

@@ -1,6 +1,8 @@
 #include "compiler.h"
 #include "chunk.h"
 #include "scanner.h"
+#include "value.h"
+#include "object.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -50,6 +52,7 @@ typedef struct {
 static void grouping(parser_t*);
 static void literal(parser_t*);
 static void number(parser_t*);
+static void string(parser_t*);
 static void unary(parser_t*);
 static void binary(parser_t*);
 static void ternary(parser_t*);
@@ -75,7 +78,7 @@ static const parse_rule_t g_rules[] = {
     [TOKEN_LESS]            = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_LESS_EQUAL]      = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_IDENTIFIER]      = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_STRING]          = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_STRING]          = {string,   NULL,   PREC_NONE},
     [TOKEN_NUMBER]          = {number,   NULL,   PREC_NONE},
     [TOKEN_AND]             = {NULL,     NULL,   PREC_NONE},
     [TOKEN_CLASS]           = {NULL,     NULL,   PREC_NONE},
@@ -304,6 +307,17 @@ static void number(parser_t* parser)
 {
     const double value = strtod(parser->previous.start, NULL);
     emit_const(parser, NUMBER_VALUE(value));
+}
+
+static void string(parser_t* parser)
+{
+    const char* const chars = parser->previous.start + 1;
+    const size_t length = parser->previous.length - 2;
+
+    string_object_t* obj = create_string_object(&parser->current_chunk->object_root, chars, length);
+    const value_t value = OBJECT_VALUE((object_t*)obj);
+
+    emit_const(parser, value);
 }
 
 static void grouping(parser_t* parser)

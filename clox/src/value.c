@@ -1,8 +1,10 @@
 #include "value.h"
 #include "memory.h"
+#include "object.h"
 
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 
 void value_array_init(value_array_t* array)
 {
@@ -57,7 +59,8 @@ void print_value(value_t value)
 {
     assert(value.type == VALUE_TYPE_NIL ||
            value.type == VALUE_TYPE_BOOL ||
-           value.type == VALUE_TYPE_NUMBER);
+           value.type == VALUE_TYPE_NUMBER ||
+           value.type == VALUE_TYPE_OBJECT);
     
     switch (value.type) {
         case VALUE_TYPE_NIL:
@@ -68,6 +71,9 @@ void print_value(value_t value)
             break;
         case VALUE_TYPE_NUMBER:
             printf("%lf", AS_NUMBER(value));
+            break;
+        case VALUE_TYPE_OBJECT:
+            print_object(value);
             break;
     }
 }
@@ -102,6 +108,9 @@ bool values_equal(value_t a, value_t b)
 
         case VALUE_TYPE_NUMBER:
             return AS_NUMBER(a) == AS_NUMBER(b);
+
+        case VALUE_TYPE_OBJECT:
+            return objects_equal(a, b);
 
         default:
             assert(!"Missing case in values_equal");

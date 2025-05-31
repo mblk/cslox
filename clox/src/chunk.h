@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "value.h"
+#include "object.h"
 
 typedef enum {      // args:
     OP_INVALID,
@@ -29,7 +30,6 @@ typedef enum {      // args:
     // a >= b   via   !(a < b)
     // a <= b   via   !(a > b)
 
-
     OP_ADD,         // -
     OP_SUB,         // -
     OP_MUL,         // -
@@ -54,6 +54,8 @@ typedef struct chunk {
     line_info_t *line_infos;
 
     value_array_t values;
+
+    object_root_t object_root;
 } chunk_t;
 
 void chunk_init(chunk_t* chunk);

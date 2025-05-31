@@ -3,10 +3,13 @@
 
 #include "common.h"
 
+typedef struct object object_t;
+
 typedef enum {
     VALUE_TYPE_NIL,
-    VALUE_TYPE_BOOL,
-    VALUE_TYPE_NUMBER,
+    VALUE_TYPE_BOOL,    // stored in value_t
+    VALUE_TYPE_NUMBER,  // stored in value_t
+    VALUE_TYPE_OBJECT,  // stored on heap
 } value_type_t;
 
 typedef struct {
@@ -14,6 +17,7 @@ typedef struct {
     union {
         bool boolean;
         double number;
+        object_t* object;
     } as;
 } value_t;
 
@@ -21,15 +25,18 @@ typedef struct {
 #define NIL_VALUE()         ((value_t){VALUE_TYPE_NIL,    {.number = 0}})
 #define BOOL_VALUE(value)   ((value_t){VALUE_TYPE_BOOL,   {.boolean = value}})
 #define NUMBER_VALUE(value) ((value_t){VALUE_TYPE_NUMBER, {.number = value}})
+#define OBJECT_VALUE(value) ((value_t){VALUE_TYPE_OBJECT, {.object = value}})
 
 // lox-type to c-type
 #define AS_BOOL(value)      ((value).as.boolean)
 #define AS_NUMBER(value)    ((value).as.number)
+#define AS_OBJECT(value)    ((value).as.object)
 
 // type checking
 #define IS_NIL(value)       ((value).type == VALUE_TYPE_NIL)
 #define IS_BOOL(value)      ((value).type == VALUE_TYPE_BOOL)
 #define IS_NUMBER(value)    ((value).type == VALUE_TYPE_NUMBER)
+#define IS_OBJECT(value)    ((value).type == VALUE_TYPE_OBJECT)
 
 
 typedef struct value_array {
@@ -48,7 +55,6 @@ void print_value(value_t value);
 
 bool value_is_truey(value_t value);
 bool value_is_falsey(value_t value);
-
 bool values_equal(value_t a, value_t b);
 
 #endif
