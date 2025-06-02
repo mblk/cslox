@@ -7,7 +7,7 @@ LD=gcc
 #CC=clang
 #LD=clang
 
-CFLAGS=-c -g -Wall -Wextra $(SAN) #-Werror
+CFLAGS=-std=c23 -c -g -Wall -Wextra $(SAN)
 LIBS=
 LDFLAGS=$(SAN)
 

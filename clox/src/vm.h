@@ -3,7 +3,6 @@
 
 #define VM_STACK_MAX 256
 
-#include "common.h"
 #include "value.h"
 
 typedef struct chunk chunk_t;

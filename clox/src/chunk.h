@@ -1,9 +1,10 @@
 #ifndef _clox_chunk_h_
 #define _clox_chunk_h_
 
-#include "common.h"
 #include "value.h"
 #include "object.h"
+
+#include <stdint.h>
 
 typedef enum {      // args:
     OP_INVALID,

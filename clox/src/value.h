@@ -1,7 +1,7 @@
 #ifndef _clox_value_h_
 #define _clox_value_h_
 
-#include "common.h"
+#include <stddef.h>
 
 typedef struct object object_t;
 
@@ -20,6 +20,10 @@ typedef struct {
         object_t* object;
     } as;
 } value_t;
+
+// 64bits for type
+// 64bits for value
+static_assert(sizeof(value_t) == 16);
 
 // c-type to lox-type
 #define NIL_VALUE()         ((value_t){VALUE_TYPE_NIL,    {.number = 0}})
