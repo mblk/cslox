@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 #define TABLE_MAX_LOAD 0.75
 
@@ -61,6 +62,43 @@ static entry_t *find_entry(const table_t* table, const string_object_t* key) {
     return NULL;
 }
 
+static entry_t *find_entry_by_string(const table_t* table, const char* key, size_t length) {
+    assert(table->capacity > 0);
+
+    const uint32_t hash = hash_string(key, length);
+
+    size_t index = hash % table->capacity;
+    entry_t* tombstone = NULL;
+
+    for (;;) {
+        entry_t* const entry = table->entries + index;
+
+        // Bucket empty or tombstone?
+        if (entry->key == NULL) {
+            if (IS_NIL(entry->value)) { // Found empty bucket
+                // Reuse first tombstones we found on the way here.
+                // If none were found, return the empty entry instead.
+                return tombstone ? tombstone : entry;
+            } else { // Found tombstone
+                // Remember the first tombstone we find.
+                if (tombstone == NULL) tombstone = entry;
+            }
+        }
+        // Is this the key we are looking for?
+        else if (entry->key->hash == hash &&
+                 entry->key->length == length &&
+                 memcmp(entry->key->chars, key, length) == 0) { // Note: comparing keys by content.
+            return entry;
+        }
+
+        // open addressing + linear probing
+        index = (index + 1) % table->capacity;
+    }
+
+    assert(!"Must not reach");
+    return NULL;
+}
+
 static void adjust_capacity(table_t* table, size_t new_capacity) {
     const entry_t *old_entries = table->entries;
     const size_t old_capacity = table->capacity;
@@ -97,7 +135,6 @@ static void adjust_capacity(table_t* table, size_t new_capacity) {
 bool table_get(const table_t* table, const string_object_t* key, value_t* value) {
     assert(table);
     assert(key);
-    assert(value);
 
     if (table->count == 0) {
         return false;
@@ -110,7 +147,34 @@ bool table_get(const table_t* table, const string_object_t* key, value_t* value)
         return false;
     }
     
-    *value = entry->value;
+    // Optionally return the value.
+    if (value) {
+        *value = entry->value;
+    }
+
+    return true;
+}
+
+bool table_get_by_string(const table_t* table, const char* key, size_t length, value_t* value) {
+    assert(table);
+    assert(key);
+
+    if (table->count == 0) {
+        return false;
+    }
+
+    const entry_t* entry = find_entry_by_string(table, key, length);
+    assert(entry);
+
+    if (!entry->key) {
+        return false;
+    }
+    
+    // Optionally return the value.
+    if (value) {
+        *value = entry->value;
+    }
+
     return true;
 }
 

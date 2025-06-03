@@ -166,33 +166,32 @@ int main(int argc, char** argv) { // table-tests
     value_t value2 = BOOL_VALUE(true);
     value_t value3 = OBJECT_VALUE((object_t*)create_string_object(&root, "value3", 6));
 
-
-
     table_t table;
-
     table_init(&table);
-    //table_dump(&table, "my table before");
-    table_set(&table, key1, value1);
-    table_set(&table, key2, value2);
-    table_set(&table, key3, value3);
-    //table_dump(&table, "my table 11");
-    table_delete(&table, key2);
-    table_delete(&table, key1);
-    table_delete(&table, key3);
-    table_set(&table, key3, value3);
-    table_dump(&table, "my table");
-
     {
-        value_t value4;
-        if (table_get(&table, key3, &value4)) {
-            printf("get key3 -> ");
-            print_value(value4);
-            printf("\n");
-        } else {
-            printf("unable to get key3\n");
+        //table_dump(&table, "my table before");
+        table_set(&table, key1, value1);
+        table_set(&table, key2, value2);
+        table_set(&table, key3, value3);
+        //table_dump(&table, "my table 11");
+        //table_delete(&table, key2);
+        //table_delete(&table, key1);
+        //table_delete(&table, key3);
+        //table_set(&table, key3, value3);
+        table_dump(&table, "my table");
+    
+        {
+            value_t value4;
+    
+            if (table_get_by_string(&table, "key1", 4, &value4)) {
+                printf("table_get: ");
+                print_value(value4);
+                printf("\n");
+            } else {
+                printf("unable to get value\n");
+            }
         }
     }
-
     table_free(&table);
 
     free_objects(&root);
