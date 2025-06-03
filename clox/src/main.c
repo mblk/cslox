@@ -1,7 +1,10 @@
 #include "chunk.h"
 #include "debug.h"
+#include "object.h"
+#include "value.h"
 #include "vm.h"
 #include "compiler.h"
+#include "table.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,7 +98,7 @@ static int run_file(const char* filename) {
     return 0;
 }
 
-int main(int argc, char** argv) {
+int main_(int argc, char** argv) {
     if (argc == 1) {
         return run_repl();
     } else if (argc == 2) {
@@ -108,7 +111,7 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-int main_(const int argc, const char *const argv[const argc]) {
+int main__(const int argc, const char *const argv[const argc]) {
     (void)argc;
     (void)argv;
 
@@ -144,6 +147,55 @@ int main_(const int argc, const char *const argv[const argc]) {
         chunk_free(&chunk);
     }
     vm_destroy(vm);
+
+    return 0;
+}
+
+int main(int argc, char** argv) { // table-tests
+    (void)argc;
+    (void)argv;
+
+    object_root_t root;
+    root.first = NULL;
+
+    string_object_t* key1 = create_string_object(&root, "key1", 4);
+    string_object_t* key2 = create_string_object(&root, "key2", 4);
+    string_object_t* key3 = create_string_object(&root, "key3", 4);
+
+    value_t value1 = NUMBER_VALUE(1.2345);
+    value_t value2 = BOOL_VALUE(true);
+    value_t value3 = OBJECT_VALUE((object_t*)create_string_object(&root, "value3", 6));
+
+
+
+    table_t table;
+
+    table_init(&table);
+    //table_dump(&table, "my table before");
+    table_set(&table, key1, value1);
+    table_set(&table, key2, value2);
+    table_set(&table, key3, value3);
+    //table_dump(&table, "my table 11");
+    table_delete(&table, key2);
+    table_delete(&table, key1);
+    table_delete(&table, key3);
+    table_set(&table, key3, value3);
+    table_dump(&table, "my table");
+
+    {
+        value_t value4;
+        if (table_get(&table, key3, &value4)) {
+            printf("get key3 -> ");
+            print_value(value4);
+            printf("\n");
+        } else {
+            printf("unable to get key3\n");
+        }
+    }
+
+    table_free(&table);
+
+    free_objects(&root);
 
     return 0;
 }

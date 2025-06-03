@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 //#define COMPILER_PRINT_CALLS
 
@@ -24,7 +23,7 @@ typedef struct {
 
     chunk_t* current_chunk;
 
-} parser_t;
+} parser_t; // TODO rename to compiler_t ?
 
 typedef enum {
     PREC_NONE,
@@ -383,6 +382,8 @@ static void ternary(parser_t* parser)
 
     // compile else branch
     parse_precendence(parser, PREC_ASSIGNMENT);
+
+    // TODO generate matching bytecode
 }
 
 //

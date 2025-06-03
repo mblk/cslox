@@ -23,12 +23,13 @@ static object_t* create_object(object_root_t* root, size_t size, object_type_t t
     return obj;
 }
 
-string_object_t* create_emppy_string_object(object_root_t* root, size_t length) {
+string_object_t* create_empty_string_object(object_root_t* root, size_t length, uint32_t hash) {
     // length=0 is legal case: for empty strings
     
     string_object_t* obj = (string_object_t*)create_object(root, sizeof(string_object_t) + length + 1, OBJECT_TYPE_STRING);
     assert(obj);
     
+    obj->hash = hash;
     obj->length = length;
     memset(obj->chars, 0, length + 1);
     
@@ -39,7 +40,8 @@ string_object_t* create_string_object(object_root_t* root, const char* chars, si
     assert(chars);
     // length=0 is legal case: for empty strings
 
-    string_object_t* obj = create_emppy_string_object(root, length);
+    const uint32_t hash = hash_string(chars, length);
+    string_object_t* obj = create_empty_string_object(root, length, hash);
     assert(obj);
         
     memcpy(obj->chars, chars, length); // terminating 0 already set
@@ -97,9 +99,12 @@ void print_object(value_t value) {
     assert(IS_OBJECT(value));
 
     switch (OBJECT_TYPE(value)) {
-        case OBJECT_TYPE_STRING:
+        case OBJECT_TYPE_STRING: {
+            //const string_object_t* string = AS_STRING(value);
             printf("%s", AS_C_STRING(value));
+            //printf(" hash=%u", string->hash);
             break;
+        }
 
         default:
             assert(!"Missing case in print_object");
@@ -120,4 +125,19 @@ void dump_objects(object_root_t* root) {
         printf("'\n");
         current = current->next;
     }
+}
+
+uint32_t hash_string(const char* start, size_t length)
+{
+    // FNV-1a
+    // http://www.isthe.com/chongo/tech/comp/fnv/#FNV-1a
+
+    uint32_t hash = 2166136261u;
+
+    for (size_t i = 0; i < length; i++) {
+        hash ^= start[i];
+        hash *= 16777619;
+    }
+
+    return hash;
 }

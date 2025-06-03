@@ -42,7 +42,6 @@ static_assert(sizeof(value_t) == 16);
 #define IS_NUMBER(value)    ((value).type == VALUE_TYPE_NUMBER)
 #define IS_OBJECT(value)    ((value).type == VALUE_TYPE_OBJECT)
 
-
 typedef struct value_array {
     size_t capacity;
     size_t count;

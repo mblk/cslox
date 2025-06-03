@@ -110,12 +110,15 @@ static void concatenate(vm_t* vm) {
 
     const size_t length = left->length + right->length;
 
-    string_object_t* result = create_emppy_string_object(&vm->root, length);
+    string_object_t* result = create_empty_string_object(&vm->root, length, 0); // temporarily setting 0 as hash
     assert(result);
 
     memcpy(result->chars, left->chars, left->length);
     memcpy(result->chars + left->length, right->chars, right->length);
     // terminating 0 already set
+
+    // update hash
+    result->hash = hash_string(result->chars, length);
 
     vm_stack_push(vm, OBJECT_VALUE((object_t*)result));
 }
