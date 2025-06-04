@@ -21,7 +21,7 @@ typedef struct {
 void table_init(table_t* table);
 void table_free(table_t* table);
 
-bool table_get(const table_t* table, const string_object_t* key, value_t* value); // compare key by address
+bool table_get(const table_t* table, const string_object_t* key, value_t* value_out); // compare key by address
 bool table_get_by_string(const table_t* table, const char* key, size_t length, const string_object_t** key_out, value_t* value_out); // compare key by content
 
 bool table_set(table_t* table, const string_object_t* key, value_t value);

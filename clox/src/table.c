@@ -132,7 +132,7 @@ static void adjust_capacity(table_t* table, size_t new_capacity) {
     FREE_BY_COUNT(entry_t, old_entries, old_capacity);
 }
 
-bool table_get(const table_t* table, const string_object_t* key, value_t* value) {
+bool table_get(const table_t* table, const string_object_t* key, value_t* value_out) {
     assert(table);
     assert(key);
 
@@ -148,8 +148,8 @@ bool table_get(const table_t* table, const string_object_t* key, value_t* value)
     }
     
     // Optionally return the value.
-    if (value) {
-        *value = entry->value;
+    if (value_out) {
+        *value_out = entry->value;
     }
 
     return true;
