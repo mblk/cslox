@@ -1,6 +1,5 @@
 #include "chunk.h"
 #include "memory.h"
-#include "object.h"
 #include "value.h"
 
 #include <assert.h>
@@ -23,8 +22,6 @@ void chunk_init(chunk_t* chunk)
     chunk->line_infos = NULL;
 
     value_array_init(&chunk->values);
-
-    chunk->object_root.first = NULL;
 }
 
 void chunk_free(chunk_t* chunk)
@@ -40,8 +37,6 @@ void chunk_free(chunk_t* chunk)
     chunk->line_infos_count = 0;
 
     value_array_free(&chunk->values);
-
-    free_objects(&chunk->object_root);
 }
 
 void chunk_write8(chunk_t* chunk, uint8_t data, uint32_t line)

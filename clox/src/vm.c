@@ -2,7 +2,7 @@
 #include "chunk.h"
 #include "debug.h"
 #include "compiler.h"
-#include "memory.h"
+#include "table.h"
 #include "value.h"
 #include "object.h"
 
@@ -26,8 +26,7 @@ typedef struct vm {
 
 } vm_t;
 
-vm_t* vm_create(void)
-{
+vm_t* vm_create(void) {
     vm_t *vm = (vm_t*)malloc(sizeof(vm_t));
     assert(vm);
 
@@ -38,30 +37,26 @@ vm_t* vm_create(void)
 
     vm->sp = vm->stack; // sp points to next free slot
 
-    vm->root.first = NULL;
+    object_root_init(&vm->root);
 
     return vm;
 }
 
-void vm_destroy(vm_t* vm)
-{
+void vm_destroy(vm_t* vm) {
     assert(vm);
 
-    dump_objects(&vm->root);
-
-    free_objects(&vm->root);
+    //object_root_dump(&vm->root, "VM objects");
+    object_root_free(&vm->root);
 
     free(vm);
 }
 
-static void reset_stack(vm_t* vm)
-{
+static void reset_stack(vm_t* vm) {
     (void)vm;
     // TODO
 }
 
-static void runtime_error(vm_t* vm, const char* format, ...)
-{
+static void runtime_error(vm_t* vm, const char* format, ...) {
     const size_t offset = vm->ip - vm->chunk->code - 1;
     const uint32_t line = chunk_get_line_for_offset(vm->chunk, offset);
     fprintf(stderr, "[Line %u] Runtime error: ", line);
@@ -75,14 +70,13 @@ static void runtime_error(vm_t* vm, const char* format, ...)
     reset_stack(vm);
 }
 
-run_result_t vm_run_source(vm_t* vm, const char* source)
-{
+run_result_t vm_run_source(vm_t* vm, const char* source) {
     run_result_t result = RUN_OK;
 
     chunk_t chunk;
     chunk_init(&chunk);
     {
-        if (compile(&chunk, source)) {
+        if (compile(&vm->root, &chunk, source)) {
 
             #ifdef VM_PRINT_CODE
                 disassemble_chunk(&chunk, "Code");
@@ -101,30 +95,55 @@ run_result_t vm_run_source(vm_t* vm, const char* source)
 static void concatenate(vm_t* vm) {
     const value_t right_value = vm_stack_pop(vm);
     const value_t left_value = vm_stack_pop(vm);
-
     assert(IS_STRING(left_value));
     assert(IS_STRING(right_value));
 
     const string_object_t* left = AS_STRING(left_value);
     const string_object_t* right = AS_STRING(right_value);
-
     const size_t length = left->length + right->length;
+    
+    // Shortcut for emtpy + empty
+    if (length == 0) {
+        const string_object_t* result = create_string_object(&vm->root, "", 0);
+        assert(result);
+        vm_stack_push(vm, OBJECT_VALUE((object_t*)result));
+        return;
+    }
 
-    string_object_t* result = create_empty_string_object(&vm->root, length, 0); // temporarily setting 0 as hash
+    // concatenate strings in temporary buffer (either on stack or heap)
+    constexpr size_t stack_buffer_size = 256;
+    const bool use_heap = length + 1 > stack_buffer_size;
+    // ie.: 
+    // ...
+    // 255 -> stack
+    // 256 -> heap (no space for terminator)
+    // ...
+
+    char stack_buffer[stack_buffer_size];
+    char* heap_buffer = nullptr;
+
+    if (use_heap) {
+        heap_buffer = malloc(length + 1);
+        assert(heap_buffer);
+    }
+
+    char* const buffer = use_heap ? heap_buffer : stack_buffer;
+    memcpy(buffer, left->chars, left->length);
+    memcpy(buffer + left->length, right->chars, right->length);
+    buffer[length] = 0; // terminate for safety and debugging, not strictly needed.
+
+    const string_object_t* result = create_string_object(&vm->root, buffer, length);
     assert(result);
 
-    memcpy(result->chars, left->chars, left->length);
-    memcpy(result->chars + left->length, right->chars, right->length);
-    // terminating 0 already set
-
-    // update hash
-    result->hash = hash_string(result->chars, length);
+    if (use_heap) {
+        assert(heap_buffer);
+        free(heap_buffer);
+    }
 
     vm_stack_push(vm, OBJECT_VALUE((object_t*)result));
 }
 
-run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
-{
+run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     assert(vm);
     assert(vm->chunk == NULL);
     assert(vm->ip == NULL);
@@ -252,8 +271,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk)
     return RUN_RUNTIME_ERROR;
 }
 
-void vm_stack_dump(const vm_t *vm)
-{
+void vm_stack_dump(const vm_t *vm) {
     printf("Stack: [");
 
     for (const value_t *slot = vm->stack; slot < vm->sp; slot++) {
@@ -264,8 +282,7 @@ void vm_stack_dump(const vm_t *vm)
     printf("] (top)\n");
 }
 
-void vm_stack_push(vm_t* vm, value_t value)
-{
+void vm_stack_push(vm_t* vm, value_t value) {
     assert(vm);
 
     //printf("push %lf\n", value);
@@ -274,8 +291,7 @@ void vm_stack_push(vm_t* vm, value_t value)
     vm->sp++;
 }
 
-value_t vm_stack_pop(vm_t* vm)
-{
+value_t vm_stack_pop(vm_t* vm) {
     assert(vm);
 
     vm->sp--;
@@ -286,8 +302,7 @@ value_t vm_stack_pop(vm_t* vm)
     return value;
 }
 
-value_t vm_stack_peek(vm_t* vm, int offset)
-{
+value_t vm_stack_peek(vm_t* vm, int offset) {
     assert(offset >= 0);
     // sp[0] -> next free slot
     // sp[-1] -> most recent value

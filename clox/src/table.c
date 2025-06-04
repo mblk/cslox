@@ -100,7 +100,7 @@ static entry_t *find_entry_by_string(const table_t* table, const char* key, size
 }
 
 static void adjust_capacity(table_t* table, size_t new_capacity) {
-    const entry_t *old_entries = table->entries;
+    entry_t *const old_entries = table->entries;
     const size_t old_capacity = table->capacity;
 
     // create new entries
@@ -155,7 +155,7 @@ bool table_get(const table_t* table, const string_object_t* key, value_t* value)
     return true;
 }
 
-bool table_get_by_string(const table_t* table, const char* key, size_t length, value_t* value) {
+bool table_get_by_string(const table_t* table, const char* key, size_t length, const string_object_t** key_out, value_t* value_out) {
     assert(table);
     assert(key);
 
@@ -170,9 +170,14 @@ bool table_get_by_string(const table_t* table, const char* key, size_t length, v
         return false;
     }
     
+    // Optionally return the key object.
+    if (key_out) {
+        *key_out = entry->key;
+    }
+
     // Optionally return the value.
-    if (value) {
-        *value = entry->value;
+    if (value_out) {
+        *value_out = entry->value;
     }
 
     return true;
@@ -237,26 +242,41 @@ bool table_delete(table_t* table, const string_object_t* key) {
     return true;
 }
 
+static void table_check_duplicates(const table_t* table) {
+    table_t temp;
+    table_init(&temp);
+
+    for (size_t i=0; i<table->capacity; i++) {
+        const entry_t* entry = table->entries + i;
+        if (!entry->key) continue;
+
+        if (table_get_by_string(&temp, entry->key->chars, entry->key->length, NULL, NULL)) {
+            printf("Error: Table has duplicate key: '%.*s'\n", (int)entry->key->length, entry->key->chars);
+        }
+
+        table_set(&temp, entry->key, NIL_VALUE());
+    }
+
+    table_free(&temp);
+}
+
 void table_dump(const table_t* table, const char* name) {
     assert(table);
 
     printf("=== table '%s' ===\n", name);
     printf("count/capacity: %zu/%zu\n", table->count, table->capacity);
-    printf("[i] key      -> value\n");
-    printf("=====================\n");
+    printf("[i] key                     -> value\n");
+    printf("====================================\n");
+
     size_t count = 0;
     for (size_t i=0; i<table->capacity; i++) {
         const entry_t* const entry = table->entries + i;
 
-        printf("[%zu] ", i);
+        const char* key = entry->key ? entry->key->chars : "---";
+        const size_t key_len = entry->key ? entry->key->length : 3;
+        const char* quotes = entry->key ? "'" : " ";
 
-        if (entry->key) {
-            printf("%-8s", entry->key->chars);
-        } else {
-            printf("---     ");
-        }
-
-        printf(" -> ");
+        printf("[%zu] %s%s%s %-*s -> ", i, quotes, key, quotes, (int)(20-key_len), "");
         print_value(entry->value);
         printf("\n");
 
@@ -266,8 +286,8 @@ void table_dump(const table_t* table, const char* name) {
     }
 
     if (count != table->count) {
-        printf("Error: Count mismatch (is %zu, should be %zu)\n", table->count, count);
-    } else {
-        printf("Count is correct.\n");
+        printf("Error: Table has incorrect count (is %zu, should be %zu)\n", table->count, count);
     }
+
+    table_check_duplicates(table);
 }

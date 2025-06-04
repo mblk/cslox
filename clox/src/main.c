@@ -98,7 +98,7 @@ static int run_file(const char* filename) {
     return 0;
 }
 
-int main_(int argc, char** argv) {
+int main(int argc, char** argv) {
     if (argc == 1) {
         return run_repl();
     } else if (argc == 2) {
@@ -151,16 +151,16 @@ int main__(const int argc, const char *const argv[const argc]) {
     return 0;
 }
 
-int main(int argc, char** argv) { // table-tests
+int main_(int argc, char** argv) { // table-tests
     (void)argc;
     (void)argv;
 
     object_root_t root;
     root.first = NULL;
 
-    string_object_t* key1 = create_string_object(&root, "key1", 4);
-    string_object_t* key2 = create_string_object(&root, "key2", 4);
-    string_object_t* key3 = create_string_object(&root, "key3", 4);
+    const string_object_t* key1 = create_string_object(&root, "key1", 4);
+    const string_object_t* key2 = create_string_object(&root, "key2", 4);
+    const string_object_t* key3 = create_string_object(&root, "key3", 4);
 
     value_t value1 = NUMBER_VALUE(1.2345);
     value_t value2 = BOOL_VALUE(true);
@@ -183,7 +183,7 @@ int main(int argc, char** argv) { // table-tests
         {
             value_t value4;
     
-            if (table_get_by_string(&table, "key1", 4, &value4)) {
+            if (table_get_by_string(&table, "key1", 4, NULL, &value4)) {
                 printf("table_get: ");
                 print_value(value4);
                 printf("\n");
@@ -194,7 +194,7 @@ int main(int argc, char** argv) { // table-tests
     }
     table_free(&table);
 
-    free_objects(&root);
+    object_root_free(&root);
 
     return 0;
 }

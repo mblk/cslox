@@ -2,7 +2,6 @@
 #define _clox_chunk_h_
 
 #include "value.h"
-#include "object.h"
 
 #include <stdint.h>
 
@@ -55,8 +54,6 @@ typedef struct chunk {
     line_info_t *line_infos;
 
     value_array_t values;
-
-    object_root_t object_root;
 } chunk_t;
 
 void chunk_init(chunk_t* chunk);

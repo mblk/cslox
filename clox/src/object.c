@@ -1,10 +1,53 @@
 #include "object.h"
 #include "memory.h"
+#include "table.h"
+#include "value.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void free_object(object_t* obj);
+
+void object_root_init(object_root_t* root) {
+    assert(root);
+
+    root->first = NULL;
+
+    table_init(&root->strings);
+}
+
+void object_root_free(object_root_t* root) {
+    assert(root);
+
+    object_t* current = root->first;
+    while (current) {
+        object_t* next = current->next;
+        free_object(current);
+        current = next;
+    }
+
+    root->first = NULL;
+
+    table_free(&root->strings);
+}
+
+void object_root_dump(object_root_t* root, const char* name) {
+    assert(root);
+
+    printf("== object root '%s' ==\n", name);
+
+    object_t* current = root->first;
+    while (current) {
+        printf("-> '");
+        print_object(OBJECT_VALUE(current));
+        printf("'\n");
+        current = current->next;
+    }
+
+    table_dump(&root->strings, "strings");
+}
 
 static object_t* create_object(object_root_t* root, size_t size, object_type_t type) {
     assert(root);
@@ -23,30 +66,32 @@ static object_t* create_object(object_root_t* root, size_t size, object_type_t t
     return obj;
 }
 
-string_object_t* create_empty_string_object(object_root_t* root, size_t length, uint32_t hash) {
-    // length=0 is legal case: for empty strings
-    
-    string_object_t* obj = (string_object_t*)create_object(root, sizeof(string_object_t) + length + 1, OBJECT_TYPE_STRING);
-    assert(obj);
-    
-    obj->hash = hash;
-    obj->length = length;
-    memset(obj->chars, 0, length + 1);
-    
-    return obj;
-}
-
-string_object_t* create_string_object(object_root_t* root, const char* chars, size_t length) {
+const string_object_t* create_string_object(object_root_t* root, const char* chars, size_t length) {
     assert(chars);
-    // length=0 is legal case: for empty strings
+    // length=0 is legal (empty strings)
 
-    const uint32_t hash = hash_string(chars, length);
-    string_object_t* obj = create_empty_string_object(root, length, hash);
-    assert(obj);
+    // try to intern string (ie. reuse existing string objects with the same content)
+    {
+        const string_object_t* existing_obj = NULL;
+        if (table_get_by_string(&root->strings, chars, length, &existing_obj, NULL)) {
+            return existing_obj;
+        }
+    }
+
+    // create new string object
+    {
+        string_object_t* obj = (string_object_t*)create_object(root, sizeof(string_object_t) + length + 1, OBJECT_TYPE_STRING);
+        assert(obj);
         
-    memcpy(obj->chars, chars, length); // terminating 0 already set
+        obj->hash = hash_string(chars, length);
+        obj->length = length;
+        memcpy(obj->chars, chars, length);
+        obj->chars[length] = '\0';
     
-    return obj;
+        table_set(&root->strings, obj, NIL_VALUE());
+        
+        return obj;
+    }
 }
 
 static void free_object(object_t* obj) {
@@ -63,19 +108,6 @@ static void free_object(object_t* obj) {
             assert(!"Missing case in free_object");
             break;
     }
-}
-
-void free_objects(object_root_t* root) {
-    assert(root);
-
-    object_t* current = root->first;
-    while (current) {
-        object_t* next = current->next;
-        free_object(current);
-        current = next;
-    }
-
-    root->first = NULL;
 }
 
 bool objects_equal(value_t a, value_t b) {
@@ -109,21 +141,6 @@ void print_object(value_t value) {
         default:
             assert(!"Missing case in print_object");
             break;
-    }
-}
-
-void dump_objects(object_root_t* root) {
-    //
-    assert(root);
-
-    printf("== object root ==\n");
-
-    object_t* current = root->first;
-    while (current) {
-        printf("-> '");
-        print_object(OBJECT_VALUE(current));
-        printf("'\n");
-        current = current->next;
     }
 }
 

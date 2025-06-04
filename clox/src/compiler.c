@@ -21,6 +21,8 @@ typedef struct {
     bool had_error;
     bool panic_mode;
 
+    object_root_t* root;
+
     chunk_t* current_chunk;
 
 } parser_t; // TODO rename to compiler_t ?
@@ -111,7 +113,7 @@ static const parse_rule_t g_rules[] = {
 
 static void advance(parser_t* parser);
 
-static void parser_init(parser_t* parser, const char* source)
+static void parser_init(parser_t* parser, object_root_t* root, chunk_t* chunk, const char* source)
 {
     memset(parser, 0, sizeof(parser_t));
 
@@ -119,6 +121,9 @@ static void parser_init(parser_t* parser, const char* source)
 
     parser->had_error = false;
     parser->panic_mode = false;
+
+    parser->root = root;
+    parser->current_chunk = chunk;
 
     // prime the parser
     advance(parser);
@@ -313,7 +318,7 @@ static void string(parser_t* parser)
     const char* const chars = parser->previous.start + 1;
     const size_t length = parser->previous.length - 2;
 
-    string_object_t* obj = create_string_object(&parser->current_chunk->object_root, chars, length);
+    const string_object_t* obj = create_string_object(parser->root, chars, length);
     const value_t value = OBJECT_VALUE((object_t*)obj);
 
     emit_const(parser, value);
@@ -390,16 +395,16 @@ static void ternary(parser_t* parser)
 // ...
 //
 
-bool compile(chunk_t* chunk, const char* source)
+bool compile(object_root_t* root, chunk_t* chunk, const char* source)
 {
+    assert(root);
     assert(chunk);
     assert(source);
 
     //printf("compile: START %s END\n", source);
 
     parser_t parser;
-    parser_init(&parser, source);
-    parser.current_chunk = chunk;
+    parser_init(&parser, root, chunk, source);
 
     expression(&parser);
     emit_return(&parser);

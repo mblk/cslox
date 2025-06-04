@@ -2,6 +2,7 @@
 #define _clox_object_h_
 
 #include "value.h"
+#include "table.h"
 
 #include <stdint.h>
 
@@ -14,8 +15,9 @@ typedef struct object {
     struct object* next; // single linked list for all objects
 } object_t;
 
-typedef struct {
+typedef struct object_root {
     object_t* first; // single linked list for all objects
+    table_t strings;
 } object_root_t;
 
 typedef struct string_object {
@@ -44,15 +46,14 @@ static inline bool is_object_type(value_t value, object_type_t object_type) {
     return IS_OBJECT(value) && OBJECT_TYPE(value) == object_type;
 }
 
-string_object_t* create_empty_string_object(object_root_t* root, size_t length, uint32_t hash);
-string_object_t* create_string_object(object_root_t* root, const char* chars, size_t length);
+void object_root_init(object_root_t* root);
+void object_root_free(object_root_t* root);
+void object_root_dump(object_root_t* root, const char* name);
 
-void free_objects(object_root_t* root);
+const string_object_t* create_string_object(object_root_t* root, const char* chars, size_t length);
 
 bool objects_equal(value_t a, value_t b);
-
 void print_object(value_t value);
-void dump_objects(object_root_t* root);
 
 uint32_t hash_string(const char* start, size_t length);
 
