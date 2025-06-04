@@ -45,7 +45,7 @@ vm_t* vm_create(void) {
 void vm_destroy(vm_t* vm) {
     assert(vm);
 
-    //object_root_dump(&vm->root, "VM objects");
+    object_root_dump(&vm->root, "VM objects");
     object_root_free(&vm->root);
 
     free(vm);

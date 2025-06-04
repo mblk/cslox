@@ -111,6 +111,7 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+#if 0
 int main__(const int argc, const char *const argv[const argc]) {
     (void)argc;
     (void)argv;
@@ -150,29 +151,48 @@ int main__(const int argc, const char *const argv[const argc]) {
 
     return 0;
 }
+#endif
 
-int main_(int argc, char** argv) { // table-tests
+#if 0
+int main(int argc, char** argv) { // table-tests
     (void)argc;
     (void)argv;
 
     object_root_t root;
     root.first = NULL;
 
-    const string_object_t* key1 = create_string_object(&root, "key1", 4);
-    const string_object_t* key2 = create_string_object(&root, "key2", 4);
-    const string_object_t* key3 = create_string_object(&root, "key3", 4);
+    const value_t key1 = OBJECT_VALUE((object_t*)create_string_object(&root, "key1", 4));
+    const value_t key2 = OBJECT_VALUE((object_t*)create_string_object(&root, "key2", 4));
+    const value_t key3 = OBJECT_VALUE((object_t*)create_string_object(&root, "key3", 4));
+    const value_t key4 = BOOL_VALUE(false);
+    const value_t key5 = BOOL_VALUE(true);
+    const value_t key6 = NUMBER_VALUE(1.234);
+    const value_t key7 = NUMBER_VALUE(1.235);
+    const value_t key8 = NUMBER_VALUE(0.0);
 
     value_t value1 = NUMBER_VALUE(1.2345);
     value_t value2 = BOOL_VALUE(true);
     value_t value3 = OBJECT_VALUE((object_t*)create_string_object(&root, "value3", 6));
+    value_t value4 = OBJECT_VALUE((object_t*)create_string_object(&root, "value4", 6));
 
     table_t table;
     table_init(&table);
     {
         //table_dump(&table, "my table before");
+
         table_set(&table, key1, value1);
         table_set(&table, key2, value2);
         table_set(&table, key3, value3);
+
+        table_set(&table, key4, value2);
+        table_set(&table, key5, value3);
+
+        table_set(&table, key6, value2);
+        table_set(&table, key7, value3);
+
+        table_set(&table, key8, value4);
+
+
         //table_dump(&table, "my table 11");
         //table_delete(&table, key2);
         //table_delete(&table, key1);
@@ -198,3 +218,4 @@ int main_(int argc, char** argv) { // table-tests
 
     return 0;
 }
+#endif

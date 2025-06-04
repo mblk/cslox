@@ -55,7 +55,7 @@ const string_object_t* create_string_object(object_root_t* root, const char* cha
 
 bool objects_equal(value_t a, value_t b);
 void print_object(value_t value);
-
-uint32_t hash_string(const char* start, size_t length);
+void print_object_to_buffer(char* buffer, size_t max_length, value_t value);
+uint32_t hash_object(value_t value);
 
 #endif

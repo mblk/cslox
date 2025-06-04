@@ -2,6 +2,7 @@
 #include "value.h"
 #include "object.h"
 #include "memory.h"
+#include "hash.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -11,7 +12,8 @@
 
 // Notes:
 // - Using open addressing with linear probing.
-// - Deleted entries are marked as "tombstone" (key==null, value=true) to keep the probing sequence intact
+// - key==NIL means bucket is empty -> NIL mustn't be used as regular key
+// - Deleted entries are marked as "tombstone" (key==NIL, value=true) to keep the probing sequence intact
 
 void table_init(table_t* table) {
     assert(table);
@@ -29,17 +31,18 @@ void table_free(table_t* table) {
     table_init(table);
 }
 
-static entry_t *find_entry(const table_t* table, const string_object_t* key) {
-    assert(table->capacity > 0);
+static entry_t *find_entry(const table_t* table, value_t key) {
+    assert(table->capacity > 0); // division by zero
 
-    size_t index = key->hash % table->capacity;
+    const uint32_t hash = hash_value(key);
+    size_t index = hash % table->capacity;
     entry_t* tombstone = NULL;
 
     for (;;) {
         entry_t* const entry = table->entries + index;
 
         // Bucket empty or tombstone?
-        if (entry->key == NULL) {
+        if (IS_NIL(entry->key)) {
             if (IS_NIL(entry->value)) { // Found empty bucket
                 // Reuse first tombstones we found on the way here.
                 // If none were found, return the empty entry instead.
@@ -50,7 +53,7 @@ static entry_t *find_entry(const table_t* table, const string_object_t* key) {
             }
         }
         // Is this the key we are looking for?
-        else if (entry->key == key) { // Note: comparing keys by address.
+        else if (values_equal(entry->key, key)) {
             return entry;
         }
 
@@ -74,7 +77,8 @@ static entry_t *find_entry_by_string(const table_t* table, const char* key, size
         entry_t* const entry = table->entries + index;
 
         // Bucket empty or tombstone?
-        if (entry->key == NULL) {
+        //if (entry->key == NULL) {
+        if (IS_NIL(entry->key)) {
             if (IS_NIL(entry->value)) { // Found empty bucket
                 // Reuse first tombstones we found on the way here.
                 // If none were found, return the empty entry instead.
@@ -84,11 +88,15 @@ static entry_t *find_entry_by_string(const table_t* table, const char* key, size
                 if (tombstone == NULL) tombstone = entry;
             }
         }
-        // Is this the key we are looking for?
-        else if (entry->key->hash == hash &&
-                 entry->key->length == length &&
-                 memcmp(entry->key->chars, key, length) == 0) { // Note: comparing keys by content.
-            return entry;
+        // Is this the (string-obj-)key we are looking for?
+        else if (IS_STRING(entry->key)) {
+            string_object_t* key_obj = AS_STRING(entry->key);
+
+            if (key_obj->hash == hash &&
+                key_obj->length == length &&
+                memcmp(key_obj->chars, key, length) == 0) {
+                    return entry;
+            }
         }
 
         // open addressing + linear probing
@@ -108,7 +116,7 @@ static void adjust_capacity(table_t* table, size_t new_capacity) {
     assert(new_entries);
 
     for (size_t i=0; i<new_capacity; i++) {
-        new_entries[i].key = NULL;
+        new_entries[i].key = NIL_VALUE();
         new_entries[i].value = NIL_VALUE();
     }
 
@@ -119,7 +127,7 @@ static void adjust_capacity(table_t* table, size_t new_capacity) {
     size_t new_count = 0;
     for (size_t i=0; i<old_capacity; i++) {
         const entry_t* src = old_entries + i;
-        if (!src->key) continue;
+        if (IS_NIL(src->key)) continue;
 
         entry_t* dest = find_entry(table, src->key);
         dest->key = src->key;
@@ -132,9 +140,13 @@ static void adjust_capacity(table_t* table, size_t new_capacity) {
     FREE_BY_COUNT(entry_t, old_entries, old_capacity);
 }
 
-bool table_get(const table_t* table, const string_object_t* key, value_t* value_out) {
+bool table_get(const table_t* table, value_t key, value_t* value_out) {
     assert(table);
-    assert(key);
+
+    if (IS_NIL(key)) {
+        assert(!"NIL mustn't be used as key in table");
+        return false;
+    }
 
     if (table->count == 0) {
         return false;
@@ -143,7 +155,7 @@ bool table_get(const table_t* table, const string_object_t* key, value_t* value_
     const entry_t* entry = find_entry(table, key);
     assert(entry);
 
-    if (!entry->key) {
+    if (IS_NIL(entry->key)) {
         return false;
     }
     
@@ -166,13 +178,15 @@ bool table_get_by_string(const table_t* table, const char* key, size_t length, c
     const entry_t* entry = find_entry_by_string(table, key, length);
     assert(entry);
 
-    if (!entry->key) {
+    if (IS_NIL(entry->key)) {
         return false;
     }
     
+    assert(IS_STRING(entry->key));
+
     // Optionally return the key object.
     if (key_out) {
-        *key_out = entry->key;
+        *key_out = AS_STRING(entry->key);
     }
 
     // Optionally return the value.
@@ -183,9 +197,13 @@ bool table_get_by_string(const table_t* table, const char* key, size_t length, c
     return true;
 }
 
-bool table_set(table_t* table, const string_object_t* key, value_t value) {
+bool table_set(table_t* table, value_t key, value_t value) {
     assert(table);
-    assert(key);
+    
+    if (IS_NIL(key)) {
+        assert(!"NIL mustn't be used as key in table");
+        return false;
+    }
 
     // must grow?
     if (table->count + 1 > table->capacity * TABLE_MAX_LOAD) {
@@ -198,8 +216,8 @@ bool table_set(table_t* table, const string_object_t* key, value_t value) {
     entry_t* entry = find_entry(table, key);
     assert(entry);
 
-    const bool is_new = entry->key == NULL;
-    const bool is_tombstone = entry->key == NULL && !IS_NIL(entry->value);
+    const bool is_new = IS_NIL(entry->key);
+    const bool is_tombstone = IS_NIL(entry->key) && IS_BOOL(entry->value) && AS_BOOL(entry->value);
 
     if (is_new && !is_tombstone) {
         table->count++; // Count is the number of active entries + the number of tombstones
@@ -217,26 +235,30 @@ void table_add_all(table_t* target, const table_t* source) {
 
     for (size_t i=0; i<source->capacity; i++) {
         const entry_t* source_entry = source->entries + i;
-        if (!source_entry->key) continue;
+        if (IS_NIL(source_entry->key)) continue;
 
         table_set(target, source_entry->key, source_entry->value);
     }
 }
 
-bool table_delete(table_t* table, const string_object_t* key) {
+bool table_delete(table_t* table, value_t key) {
     assert(table);
-    assert(key);
+    
+    if (IS_NIL(key)) {
+        assert(!"NIL mustn't be used as key in table");
+        return false;
+    }
 
     if (table->count == 0) {
         return false;
     }
 
     entry_t* entry = find_entry(table, key);
-    if (entry->key == NULL) {
+    if (IS_NIL(entry->key)) {
         return false;
     }
 
-    entry->key = NULL;
+    entry->key = NIL_VALUE();
     entry->value = BOOL_VALUE(true); // mark entry as a "tombstone" to keep the probe-sequence intact
 
     return true;
@@ -248,10 +270,13 @@ static void table_check_duplicates(const table_t* table) {
 
     for (size_t i=0; i<table->capacity; i++) {
         const entry_t* entry = table->entries + i;
-        if (!entry->key) continue;
+        if (IS_NIL(entry->key)) continue;
+        if (!IS_STRING(entry->key)) continue;
 
-        if (table_get_by_string(&temp, entry->key->chars, entry->key->length, NULL, NULL)) {
-            printf("Error: Table has duplicate key: '%.*s'\n", (int)entry->key->length, entry->key->chars);
+        const string_object_t* key_obj = AS_STRING(entry->key);
+
+        if (table_get_by_string(&temp, key_obj->chars, key_obj->length, NULL, NULL)) {
+            printf("Error: Table has duplicate key: '%.*s'\n", (int)key_obj->length, key_obj->chars);
         }
 
         table_set(&temp, entry->key, NIL_VALUE());
@@ -272,15 +297,17 @@ void table_dump(const table_t* table, const char* name) {
     for (size_t i=0; i<table->capacity; i++) {
         const entry_t* const entry = table->entries + i;
 
-        const char* key = entry->key ? entry->key->chars : "---";
-        const size_t key_len = entry->key ? entry->key->length : 3;
-        const char* quotes = entry->key ? "'" : " ";
+        char key_buffer[256] = {0};
+        print_value_to_buffer(key_buffer, sizeof(key_buffer), entry->key);
 
-        printf("[%zu] %s%s%s %-*s -> ", i, quotes, key, quotes, (int)(20-key_len), "");
+        const size_t key_len = strlen(key_buffer);
+        const char* quotes = IS_NIL(entry->key) ? " " : "'";
+
+        printf("[%zu] %s%s%s %-*s -> ", i, quotes, key_buffer, quotes, (int)(20-key_len), "");
         print_value(entry->value);
         printf("\n");
 
-        if (entry->key != NULL || (entry->key == NULL && IS_BOOL(entry->value))) {
+        if (!IS_NIL(entry->key) || (IS_NIL(entry->key) && IS_BOOL(entry->value))) {
             count++; // Number of active entries + number of tombstones
         }
     }

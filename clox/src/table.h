@@ -8,7 +8,7 @@
 typedef struct string_object string_object_t;
 
 typedef struct {
-    const string_object_t* key;
+    value_t key;
     value_t value;
 } entry_t;
 
@@ -21,12 +21,11 @@ typedef struct {
 void table_init(table_t* table);
 void table_free(table_t* table);
 
-bool table_get(const table_t* table, const string_object_t* key, value_t* value_out); // compare key by address
-bool table_get_by_string(const table_t* table, const char* key, size_t length, const string_object_t** key_out, value_t* value_out); // compare key by content
-
-bool table_set(table_t* table, const string_object_t* key, value_t value);
+bool table_get(const table_t* table, value_t key, value_t* value_out);
+bool table_get_by_string(const table_t* table, const char* key, size_t length, const string_object_t** key_out, value_t* value_out); // compares key by content
+bool table_set(table_t* table, value_t key, value_t value);
 void table_add_all(table_t* target, const table_t* source);
-bool table_delete(table_t* table, const string_object_t* key);
+bool table_delete(table_t* table, value_t key);
 
 void table_dump(const table_t* table, const char* name);
 

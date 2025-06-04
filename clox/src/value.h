@@ -2,6 +2,7 @@
 #define _clox_value_h_
 
 #include <stddef.h>
+#include <stdint.h>
 
 typedef struct object object_t;
 
@@ -19,6 +20,7 @@ typedef struct {
         double number;
         object_t* object;
     } as;
+    // TODO maybe precompute hash for all values ?
 } value_t;
 
 // 64bits for type
@@ -55,6 +57,8 @@ size_t value_array_write(value_array_t* array, value_t value);
 void value_array_dump(const value_array_t* array);
 
 void print_value(value_t value);
+void print_value_to_buffer(char* buffer, size_t max_length, value_t value);
+uint32_t hash_value(value_t value);
 
 bool value_is_truey(value_t value);
 bool value_is_falsey(value_t value);

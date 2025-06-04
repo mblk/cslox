@@ -2,6 +2,7 @@
 #include "memory.h"
 #include "table.h"
 #include "value.h"
+#include "hash.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -88,7 +89,7 @@ const string_object_t* create_string_object(object_root_t* root, const char* cha
         memcpy(obj->chars, chars, length);
         obj->chars[length] = '\0';
     
-        table_set(&root->strings, obj, NIL_VALUE());
+        table_set(&root->strings, OBJECT_VALUE((object_t*)obj), NIL_VALUE());
         
         return obj;
     }
@@ -118,10 +119,13 @@ bool objects_equal(value_t a, value_t b) {
         const string_object_t* string_a = AS_STRING(a);
         const string_object_t* string_b = AS_STRING(b);
 
-        if (string_a->length == string_b->length &&
-            memcmp(string_a->chars, string_b->chars, string_a->length) == 0) {
-            return true;
-        }
+        return string_a == string_b; // Note: Comparing by address. This is possible due to string-interning.
+
+        // Without string interning:
+        // if (string_a->length == string_b->length &&
+        //     memcmp(string_a->chars, string_b->chars, string_a->length) == 0) {
+        //     return true;
+        // }
     }
 
     return false;
@@ -144,17 +148,35 @@ void print_object(value_t value) {
     }
 }
 
-uint32_t hash_string(const char* start, size_t length)
-{
-    // FNV-1a
-    // http://www.isthe.com/chongo/tech/comp/fnv/#FNV-1a
+void print_object_to_buffer(char* buffer, size_t max_length, value_t value) {
+    assert(IS_OBJECT(value));
 
-    uint32_t hash = 2166136261u;
+    switch (OBJECT_TYPE(value)) {
+        case OBJECT_TYPE_STRING: {
+            //const string_object_t* string = AS_STRING(value);
+            snprintf(buffer, max_length, "%s", AS_C_STRING(value));
+            //printf(" hash=%u", string->hash);
+            break;
+        }
 
-    for (size_t i = 0; i < length; i++) {
-        hash ^= start[i];
-        hash *= 16777619;
+        default:
+            assert(!"Missing case in print_object");
+            snprintf(buffer, max_length, "???");
+            break;
     }
+}
 
-    return hash;
+uint32_t hash_object(value_t value) {
+    assert(IS_OBJECT(value));
+
+    switch (OBJECT_TYPE(value)) {
+        case OBJECT_TYPE_STRING: {
+            const string_object_t* string = AS_STRING(value);
+            return string->hash;
+        }
+
+        default:
+            assert(!"Missing case in print_object");
+            return 0;
+    }
 }
