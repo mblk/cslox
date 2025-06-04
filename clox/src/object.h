@@ -42,6 +42,7 @@ typedef struct string_object {
 #define AS_C_STRING(value)      (((string_object_t*)AS_OBJECT(value))->chars)
 
 // Function instead of macro to prevent double-evaluation
+[[maybe_unused]]
 static inline bool is_object_type(value_t value, object_type_t object_type) {
     return IS_OBJECT(value) && OBJECT_TYPE(value) == object_type;
 }
