@@ -160,7 +160,7 @@ void print_object_to_buffer(char* buffer, size_t max_length, value_t value) {
         }
 
         default:
-            assert(!"Missing case in print_object");
+            assert(!"Missing case in print_object_to_buffer");
             snprintf(buffer, max_length, "???");
             break;
     }
@@ -175,8 +175,11 @@ uint32_t hash_object(value_t value) {
             return string->hash;
         }
 
+        // TODO for later:
+        // maybe use GetHashCode()/Equals() approach from .NET so any user-defined object can be used as key in a hashmap?
+
         default:
-            assert(!"Missing case in print_object");
+            assert(!"Missing case in hash_object");
             return 0;
     }
 }
