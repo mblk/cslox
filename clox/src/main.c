@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L // for clock_gettime()
+
 #include "chunk.h"
 #include "debug.h"
 #include "object.h"
@@ -10,7 +12,9 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <time.h>
 
+#if 1
 static int interpret(const char *source) {
     assert(source);
 
@@ -110,9 +114,10 @@ int main(int argc, char** argv) {
     }
     return 0;
 }
+#endif
 
 #if 0
-int main__(const int argc, const char *const argv[const argc]) {
+int main(const int argc, const char *const argv[const argc]) { // chunk-tests
     (void)argc;
     (void)argv;
 
@@ -217,5 +222,111 @@ int main(int argc, char** argv) { // table-tests
     object_root_free(&root);
 
     return 0;
+}
+#endif
+
+#if 0
+
+static inline uint64_t get_time_ns() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+}
+
+static double run_table_benchmark(size_t N);
+
+int main(int argc, char** argv) { // table-benchmark
+    (void)argc;
+    (void)argv;
+
+    const size_t repeats = 3;
+
+    const size_t sizes[] = {
+        1000,
+        1000 * 10,
+        1000 * 100,
+        1000 * 1000,
+        1000 * 1000 * 10,
+        //1000 * 1000 * 100,
+        //1000 * 1000 * 1000,
+    };
+    const size_t num_sizes = sizeof(sizes) / sizeof(sizes[0]);
+
+    for (size_t i=0; i<num_sizes; i++) {
+        const size_t N = sizes[i];
+
+        for (size_t r=0; r<repeats; r++) {
+            const double t = run_table_benchmark(N);
+        
+            printf("N=%zu t=%.6lf\n", N, t);
+        }
+    }
+
+    return 0;
+}
+
+static double run_table_benchmark(size_t N) {
+
+    object_root_t root;
+    object_root_init(&root);
+
+    table_t table;
+    table_init(&table);
+
+    double* keys = malloc(sizeof(double) * N);
+    assert(keys);
+
+    for (size_t i=0; i<N; i++) {
+        //const double key = (double)rand(); // Note: there might be duplicates
+
+        const double key = (double)i * 2;
+
+        //uint64_t key_bits = (uint64_t)i * 2654435761ULL; // Streuung mit Knuth's Multiplikator
+        //const double key = (double)key_bits;
+
+        const value_t key_value = NUMBER_VALUE(key);
+        
+        keys[i] = key;
+        table_set(&table, key_value, key_value);
+    }
+
+    // --- start of timing: only lookup + value-check ---
+    uint64_t t_start = get_time_ns();
+
+    volatile double sum = 0;
+
+    for (size_t i=0; i<N; i++) {
+        const double x = keys[i];
+        value_t value = NIL_VALUE();
+
+        const bool found = table_get(&table, NUMBER_VALUE(x), &value);
+        if (!found) {
+            printf("not found\n");
+            return -1;
+        }
+
+        if (!values_equal(NUMBER_VALUE(x), value)) {
+            printf("key != value\n");
+            return -1;
+        }
+
+        sum += AS_NUMBER(value);
+    }
+
+    // --- end of timing ---
+    uint64_t t_end = get_time_ns();
+    double elapsed_sec = (t_end - t_start) / 1e9;
+
+    //printf("N=%zu, dt=%.6lfs      %.1lf\n", N, elapsed_sec, sum);
+
+    if (sum == 123) { // prevent optimization
+        printf("sum was 123\n");
+    }
+
+    free(keys);
+    table_free(&table);
+    object_root_free(&root);
+
+    return elapsed_sec;
 }
 #endif
