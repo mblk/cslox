@@ -1,27 +1,48 @@
+#
+# Makefile for clox
+#
 
-SAN=-fsanitize=address,undefined,bounds,leak,signed-integer-overflow
+# Build mode, use like this:
+#   make
+#   make BUILD=release
+BUILD ?= debug
 
-CC=gcc
-LD=gcc
+# Compiler/Linker
+CC = gcc
+LD = gcc
+#CC = clang
+#LD = clang
 
-#CC=clang
-#LD=clang
+# Flags
+COMMON_CFLAGS = -std=c23 -c -Wall -Wextra
+COMMON_LDFLAGS =
 
-CFLAGS=-std=c23 -c -g -Wall -Wextra $(SAN)
-LIBS=
-LDFLAGS=$(SAN)
+ifeq ($(BUILD), release)
+	CFLAGS = $(COMMON_CFLAGS) -O3 -DNDEBUG -march=native -flto -fomit-frame-pointer
+	LDFLAGS = $(COMMON_LDFLAGS) -flto -Wl,--strip-all
+else
+	SAN = -fsanitize=address,undefined,bounds,leak,signed-integer-overflow
+	CFLAGS = $(COMMON_CFLAGS) -g $(SAN)
+	LDFLAGS = $(COMMON_LDFLAGS) $(SAN)
+endif
 
 SRC := $(wildcard src/*.c)
 OBJ := $(patsubst src/%.c,obj/%.o,$(SRC))
+
+LIBS =
+OUT = clox
+
+# Targets
+.PHONY: all clean link
 
 all: clean $(OBJ) link
 
 clean:
 	mkdir -p obj/
-	-rm -f obj/*
+	-rm -f obj/* $(OUT)
 
 obj/%.o: src/%.c
 	$(CC) $(CFLAGS) $< -o $@
 
 link:
-	$(LD) $(LDFLAGS) $(LIBS) $(OBJ) -o clox
+	$(LD) $(LDFLAGS) $(LIBS) $(OBJ) -o $(OUT)
