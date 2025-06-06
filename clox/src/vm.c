@@ -159,6 +159,14 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     vm->chunk = chunk;
     vm->ip = chunk->code;
 
+    // cleanup before returning
+    #define RETURN(value) \
+        do { \
+            vm->chunk = NULL; \
+            vm->ip = NULL; \
+            return value; \
+        } while (false)
+
     #define READ_BYTE()         (*(vm->ip++))
     #define READ_WORD()         (vm->ip += 2, *((uint16_t *)(vm->ip - 2)))
     #define READ_DWORD()        (vm->ip += 4, *((uint32_t *)(vm->ip - 4)))
@@ -181,7 +189,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
         do { \
             if (!IS_NUMBER(PEEK(0))) { \
                 ERROR("Operand must be number"); \
-                return RUN_RUNTIME_ERROR; \
+                RETURN(RUN_RUNTIME_ERROR); \
             } \
             value_t right = POP(); \
             value_t result = NUMBER_VALUE(op AS_NUMBER(right)); \
@@ -200,7 +208,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
         do { \
             if (!IS_NUMBER(PEEK(1)) || !IS_NUMBER(PEEK(1))) { \
                 ERROR("Operands must be numbers"); \
-                return RUN_RUNTIME_ERROR; \
+                RETURN(RUN_RUNTIME_ERROR); \
             } \
             value_t right = POP(); \
             value_t left = POP(); \
@@ -216,7 +224,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
 
             if (next_offset >= vm->chunk->count) {
                 printf("Error: Trying to execute code past end of chunk! (offset=%zu)\n", next_offset);
-                return RUN_RUNTIME_ERROR;
+                RETURN(RUN_RUNTIME_ERROR);
             }
         }
 
@@ -284,7 +292,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
                     char buffer[128] = {0};
                     print_value_to_buffer(buffer, sizeof(buffer), name);
                     runtime_error(vm, "Undefined variable '%s'.", buffer);
-                    return RUN_RUNTIME_ERROR;
+                    RETURN(RUN_RUNTIME_ERROR);
                 }
 
                 PUSH(value);
@@ -305,7 +313,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
                     char buffer[128] = {0};
                     print_value_to_buffer(buffer, sizeof(buffer), name);
                     runtime_error(vm, "Undefined variable '%s'", buffer);
-                    return RUN_RUNTIME_ERROR;
+                    RETURN(RUN_RUNTIME_ERROR);
                 }
 
                 break;
@@ -314,7 +322,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
             case OP_POP: POP(); break;
 
             case OP_RETURN: {
-                return RUN_OK;
+                RETURN(RUN_OK);
             }
 
             case OP_PRINT: {
@@ -329,7 +337,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
 
             default: {
                 printf("unknown opcode %d\n", opcode);
-                return RUN_RUNTIME_ERROR;
+                RETURN(RUN_RUNTIME_ERROR);
             }
         }
     }
@@ -345,7 +353,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     #undef READ_BYTE
 
     assert(!"Must not reach");
-    return RUN_RUNTIME_ERROR;
+    RETURN(RUN_RUNTIME_ERROR);
 }
 
 void vm_stack_dump(const vm_t *vm) {

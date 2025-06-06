@@ -15,28 +15,27 @@
 #include <time.h>
 
 #if 1
-static int interpret(const char *source) {
+static int interpret(vm_t* vm, const char *source) {
+    assert(vm);
     assert(source);
 
-    vm_t* const vm = vm_create();
-    {
-        const run_result_t result = vm_run_source(vm, source);
+    const run_result_t result = vm_run_source(vm, source);
 
-        printf("Result: ");
-        switch (result) {
-            case RUN_OK:            printf("OK\n");            break;
-            case RUN_COMPILE_ERROR: printf("Compile error\n"); break;
-            case RUN_RUNTIME_ERROR: printf("Runtime error\n"); break;
-            default:                printf("unknown error\n"); break;
-        }
+    printf("Result: ");
+    switch (result) {
+        case RUN_OK:            printf("OK\n");            break;
+        case RUN_COMPILE_ERROR: printf("Compile error\n"); break;
+        case RUN_RUNTIME_ERROR: printf("Runtime error\n"); break;
+        default:                printf("unknown error\n"); break;
     }
-    vm_destroy(vm);
 
     return 0;
 }
 
 static int run_repl(void) {
     char line[1024];
+
+    vm_t* const vm = vm_create();
 
     for(;;) {
         printf("> ");
@@ -51,8 +50,10 @@ static int run_repl(void) {
             continue;
         }
 
-        interpret(line);
+        interpret(vm, line);
     }
+
+    vm_destroy(vm);
 
     return 0;
 }
@@ -95,7 +96,9 @@ static int run_file(const char* filename) {
     const char * const buffer = read_file(filename);
     assert(buffer);
 
-    interpret(buffer);
+    vm_t* const vm = vm_create();
+    interpret(vm, buffer);
+    vm_destroy(vm);
 
     free((void*)buffer);
 
