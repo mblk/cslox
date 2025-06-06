@@ -201,11 +201,23 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
 
     for(;;) {
 
+        // Check chunk-boundary
+        {
+            size_t next_offset = (size_t)(vm->ip - vm->chunk->code);
+
+            if (next_offset >= vm->chunk->count) {
+                printf("Error: Trying to execute code past end of chunk! (offset=%zu)\n", next_offset);
+                return RUN_RUNTIME_ERROR;
+            }
+        }
+
         #ifdef VM_TRACE_EXECUTION
+        {
             printf("\n");
             vm_stack_dump(vm);
             printf("Next: ");
             disassemble_instruction(chunk, (size_t)(vm->ip - vm->chunk->code));
+        }
         #endif
 
         const uint8_t opcode = READ_BYTE();
@@ -214,16 +226,16 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
             case OP_CONST:      PUSH(READ_CONST());      break;
             case OP_CONST_LONG: PUSH(READ_CONST_LONG()); break;
 
-            case OP_NIL:    PUSH(NIL_VALUE());       break;
-            case OP_TRUE:   PUSH(BOOL_VALUE(true));  break;
-            case OP_FALSE:  PUSH(BOOL_VALUE(false)); break;
+            case OP_NIL:        PUSH(NIL_VALUE());       break;
+            case OP_TRUE:       PUSH(BOOL_VALUE(true));  break;
+            case OP_FALSE:      PUSH(BOOL_VALUE(false)); break;
 
-            case OP_NOT:    PUSH(BOOL_VALUE(value_is_falsey(POP()))); break;
-            case OP_NEGATE: UNARY_NUMBER_OP(-); break;
+            case OP_NOT:        PUSH(BOOL_VALUE(value_is_falsey(POP()))); break;
+            case OP_NEGATE:     UNARY_NUMBER_OP(-); break;
 
-            case OP_EQUAL:   BINARY_FN_OP(BOOL_VALUE, values_equal); break;
-            case OP_GREATER: BINARY_NUMBER_OP(BOOL_VALUE, >); break;
-            case OP_LESS:    BINARY_NUMBER_OP(BOOL_VALUE, <); break;
+            case OP_EQUAL:      BINARY_FN_OP(BOOL_VALUE, values_equal); break;
+            case OP_GREATER:    BINARY_NUMBER_OP(BOOL_VALUE, >); break;
+            case OP_LESS:       BINARY_NUMBER_OP(BOOL_VALUE, <); break;
 
             case OP_ADD: {
                 const value_t left = PEEK(1);
@@ -242,18 +254,26 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
             case OP_MUL: BINARY_NUMBER_OP(NUMBER_VALUE, *); break;
             case OP_DIV: BINARY_NUMBER_OP(NUMBER_VALUE, /); break;
 
-            case OP_RETURN:
-            {
-                value_t value = POP();
-                printf("Return: ");
-                print_value(value);
-                printf("\n");
+            case OP_POP: POP(); break;
+
+            case OP_RETURN: {
                 return RUN_OK;
             }
 
-            default:
+            case OP_PRINT: {
+                //xxx
+                printf("OUTPUT: ");
+                //xxx
+
+                print_value(POP());
+                printf("\n");
+                break;
+            }
+
+            default: {
                 printf("unknown opcode %d\n", opcode);
                 return RUN_RUNTIME_ERROR;
+            }
         }
     }
 

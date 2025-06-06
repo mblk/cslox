@@ -90,7 +90,9 @@ size_t disassemble_instruction(const chunk_t* chunk, size_t offset)
         case OP_MUL:        return simple_instruction("OP_MUL");
         case OP_DIV:        return simple_instruction("OP_DIV");
 
+        case OP_POP:        return simple_instruction("OP_POP");
         case OP_RETURN:     return simple_instruction("OP_RETURN");
+        case OP_PRINT:      return simple_instruction("OP_PRINT");
 
         default:            return unknown_instruction(opcode);
     }

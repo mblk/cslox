@@ -35,7 +35,11 @@ typedef enum {      // args:
     OP_MUL,         // -
     OP_DIV,         // -
 
+    OP_POP,         // -
+
     OP_RETURN,      // -
+
+    OP_PRINT,       // -
 
 } OpCode;
 

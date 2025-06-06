@@ -146,6 +146,10 @@ uint32_t chunk_get_line_for_offset(const chunk_t* chunk, size_t offset)
         current_offset += chunk->line_infos[i].bytes;
     }
 
+    // error case
+    chunk_dump(chunk);
+    printf("Error: can't find line for offset %zu\n", offset);
+
     assert(!"could not find line for offset");
     return 0;
 }

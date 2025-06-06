@@ -8,4 +8,15 @@
 
 //"Hello" + " " + "World" + "!"
 
-"aaa" + "aaa" + "aaa" + ("a" + "a" + "a")
+//"aaa" + "aaa" + "aaa" + ("a" + "a" + "a")
+
+print 1 + 3
+print a
+print a
+print a
+print a;
+print a
+print a
+print a;
+print a
+print a

@@ -12,6 +12,18 @@
 
 //#define COMPILER_PRINT_CALLS
 
+
+// Grammar:
+//
+//
+// statement → exprStmt
+//           | printStmt ;
+//
+// declaration → varDecl
+//             | statement ;
+//
+
+
 typedef struct {
     scanner_t scanner;
 
@@ -113,8 +125,7 @@ static const parse_rule_t g_rules[] = {
 
 static void advance(parser_t* parser);
 
-static void parser_init(parser_t* parser, object_root_t* root, chunk_t* chunk, const char* source)
-{
+static void parser_init(parser_t* parser, object_root_t* root, chunk_t* chunk, const char* source) {
     memset(parser, 0, sizeof(parser_t));
 
     scanner_init(&parser->scanner, source);
@@ -133,8 +144,7 @@ static void parser_init(parser_t* parser, object_root_t* root, chunk_t* chunk, c
 // error handling
 //
 
-static void error_at_token(parser_t* parser, const token_t* token, const char *message)
-{
+static void error_at_token(parser_t* parser, const token_t* token, const char *message) {
     // skip extra errors in panic mode
     if (parser->panic_mode) return;
 
@@ -152,13 +162,11 @@ static void error_at_token(parser_t* parser, const token_t* token, const char *m
     parser->panic_mode = true;
 }
 
-static void error_at_current(parser_t* parser, const char* message)
-{
+static void error_at_current(parser_t* parser, const char* message) {
     error_at_token(parser, &parser->current, message);
 }
 
-static void error_at_previous(parser_t* parser, const char *message)
-{
+static void error_at_previous(parser_t* parser, const char *message) {
     error_at_token(parser, &parser->previous, message);
 }
 
@@ -166,8 +174,7 @@ static void error_at_previous(parser_t* parser, const char *message)
 // parse utils
 //
 
-static void advance(parser_t* parser)
-{
+static void advance(parser_t* parser) {
     parser->previous = parser->current;
 
     for(;;) {
@@ -178,8 +185,7 @@ static void advance(parser_t* parser)
     }
 }
 
-static void consume(parser_t* parser, token_type_t type, const char* message)
-{
+static void consume(parser_t* parser, token_type_t type, const char* message) {
     if (parser->current.type == type) {
         advance(parser);
         return;
@@ -188,37 +194,45 @@ static void consume(parser_t* parser, token_type_t type, const char* message)
     error_at_current(parser, message);
 }
 
+static bool check(parser_t* parser, token_type_t type) {
+    return parser->current.type == type;
+}
+
+static bool match(parser_t* parser, token_type_t type) {
+    if (check(parser, type)) {
+        advance(parser);
+        return true;
+    } else {
+        return false;
+    }
+}
+
 //
 // emit utils
 //
 
-static void emit_byte(parser_t* parser, uint8_t byte)
-{
+static void emit_byte(parser_t* parser, uint8_t byte) {
     chunk_write8(parser->current_chunk, byte, parser->previous.line);
 }
 
-static void emit_bytes(parser_t* parser, uint8_t byte1, uint8_t byte2)
-{
+static void emit_bytes(parser_t* parser, uint8_t byte1, uint8_t byte2) {
     emit_byte(parser, byte1);
     emit_byte(parser, byte2);
 }
 
-static void emit_return(parser_t* parser)
-{
+static void emit_return(parser_t* parser) {
     emit_byte(parser, OP_RETURN);
 }
 
-static void emit_const(parser_t* parser, value_t value)
-{
+static void emit_const(parser_t* parser, value_t value) {
     chunk_write_const(parser->current_chunk, value, parser->previous.line);
 }
 
 //
-// ...
+// Pratt parser
 //
 
-static const parse_rule_t* get_rule(token_type_t type)
-{
+static const parse_rule_t* get_rule(token_type_t type) {
     const size_t index = (size_t)type;
     const size_t num_rules = sizeof(g_rules) / sizeof(parse_rule_t);
 
@@ -230,15 +244,13 @@ static const parse_rule_t* get_rule(token_type_t type)
 #ifdef COMPILER_PRINT_CALLS
 static int g_call_id = 1;
 static int g_indent = 0;
-static void print_indent()
-{
+static void print_indent() {
     for (int i=0; i<g_indent; i++) printf("    ");
 }
 #define pp_printf(args...) print_indent(); printf(args)
 #endif
 
-static void parse_precendence(parser_t* parser, precedence_t prec)
-{
+static void parse_precendence(parser_t* parser, precedence_t prec) {
 #ifdef COMPILER_PRINT_CALLS
     const int id = g_call_id++;
     pp_printf("parse_precendence[%d] start prec=%d\n", id, (int)prec);
@@ -279,16 +291,12 @@ static void parse_precendence(parser_t* parser, precedence_t prec)
 }
 
 //
-// ...
+// Functions for pratt parser
 //
 
-static void expression(parser_t* parser)
-{
-    parse_precendence(parser, PREC_ASSIGNMENT);
-}
+static void expression(parser_t* parser);
 
-static void literal(parser_t *parser)
-{
+static void literal(parser_t *parser) {
     const token_type_t type = parser->previous.type;
 
     switch (type) {
@@ -307,14 +315,12 @@ static void literal(parser_t *parser)
     }
 }
 
-static void number(parser_t* parser)
-{
+static void number(parser_t* parser) {
     const double value = strtod(parser->previous.start, NULL);
     emit_const(parser, NUMBER_VALUE(value));
 }
 
-static void string(parser_t* parser)
-{
+static void string(parser_t* parser) {
     const char* const chars = parser->previous.start + 1;
     const size_t length = parser->previous.length - 2;
 
@@ -324,14 +330,12 @@ static void string(parser_t* parser)
     emit_const(parser, value);
 }
 
-static void grouping(parser_t* parser)
-{
+static void grouping(parser_t* parser) {
     expression(parser);
     consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
 
-static void unary(parser_t* parser)
-{
+static void unary(parser_t* parser) {
     // op already consumed
     const token_type_t type = parser->previous.type;
 
@@ -347,8 +351,7 @@ static void unary(parser_t* parser)
     }
 }
 
-static void binary(parser_t* parser)
-{
+static void binary(parser_t* parser) {
     // left operand and op already consumed
     const token_type_t type = parser->previous.type;
 
@@ -375,8 +378,7 @@ static void binary(parser_t* parser)
     }
 }
 
-static void ternary(parser_t* parser)
-{
+static void ternary(parser_t* parser) {
     // A ? B : C
     // left operand and '?' already consumed
 
@@ -395,8 +397,98 @@ static void ternary(parser_t* parser)
 // ...
 //
 
-bool compile(object_root_t* root, chunk_t* chunk, const char* source)
-{
+static void declaration(parser_t *parser);
+static void statement(parser_t* parser);
+static void print_statement(parser_t* parser);
+static void expression_statement(parser_t* parser);
+
+static void synchronize(parser_t* parser);
+
+
+
+static void expression(parser_t* parser) {
+    parse_precendence(parser, PREC_ASSIGNMENT);
+}
+
+static void declaration(parser_t *parser) {
+    statement(parser);
+
+    if (parser->panic_mode) {
+        synchronize(parser);
+    }
+}
+
+static void statement(parser_t* parser) {
+    if (match(parser, TOKEN_PRINT)) {
+        print_statement(parser);
+    } else {
+        expression_statement(parser);
+    }
+}
+
+static void print_statement(parser_t* parser) {
+    // eg: print 1+2+3;
+
+    // print token already consumed
+    expression(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
+    emit_byte(parser, OP_PRINT);
+}
+
+static void expression_statement(parser_t* parser) {
+    // eg: 1+2+3;
+
+    expression(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after expression.");
+    emit_byte(parser, OP_POP); // discard value
+}
+
+
+
+
+
+//
+// error recovery
+//
+
+static void synchronize(parser_t* parser) {
+
+    for(;;) {
+
+        if (parser->previous.type == TOKEN_SEMICOLON) {
+            // found good sync point
+            return;
+        }
+
+        switch (parser->current.type) {
+            case TOKEN_EOF:
+            case TOKEN_CLASS:
+            case TOKEN_FUN:
+            case TOKEN_VAR:
+            case TOKEN_FOR:
+            case TOKEN_IF:
+            case TOKEN_WHILE:
+            case TOKEN_PRINT:
+            case TOKEN_RETURN:
+                // found good sync point
+                parser->panic_mode = false;
+                return;
+
+            default:
+                // continue looking
+                break;
+        }
+
+        // skip token
+        advance(parser);
+    }
+}
+
+//
+// ...
+//
+
+bool compile(object_root_t* root, chunk_t* chunk, const char* source) {
     assert(root);
     assert(chunk);
     assert(source);
@@ -406,10 +498,17 @@ bool compile(object_root_t* root, chunk_t* chunk, const char* source)
     parser_t parser;
     parser_init(&parser, root, chunk, source);
 
-    expression(&parser);
-    emit_return(&parser);
+    // Expression parser:
+    //expression(&parser);
+    //emit_return(&parser);
+    //consume(&parser, TOKEN_EOF, "Expect end of expression.");
 
-    consume(&parser, TOKEN_EOF, "Expect end of expression.");
+    // Statement parser:
+    while (!match(&parser, TOKEN_EOF)) {
+        declaration(&parser);
+    }
+
+    emit_return(&parser);
 
     return !parser.had_error;
 }
