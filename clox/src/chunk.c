@@ -7,8 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void chunk_init(chunk_t* chunk)
-{
+void chunk_init(chunk_t* chunk) {
     assert(chunk);
     
     memset(chunk, 0, sizeof(chunk_t));
@@ -24,8 +23,7 @@ void chunk_init(chunk_t* chunk)
     value_array_init(&chunk->values);
 }
 
-void chunk_free(chunk_t* chunk)
-{
+void chunk_free(chunk_t* chunk) {
     assert(chunk);
 
     chunk->code = GROW_ARRAY(uint8_t, chunk->code, chunk->capacity, 0);
@@ -39,8 +37,23 @@ void chunk_free(chunk_t* chunk)
     value_array_free(&chunk->values);
 }
 
-void chunk_write8(chunk_t* chunk, uint8_t data, uint32_t line)
-{
+uint8_t chunk_read8(const chunk_t* chunk, size_t offset) {
+    assert(chunk);
+    // TODO check bounds
+
+    return chunk->code[offset];
+}
+
+uint32_t chunk_read32(const chunk_t* chunk, size_t offset) {
+    assert(chunk);
+    // TODO check bounds
+
+    uint32_t ret = 0;
+    memcpy(&ret, chunk->code + offset, sizeof(uint32_t));
+    return ret;
+}
+
+void chunk_write8(chunk_t* chunk, uint8_t data, uint32_t line) {
     assert(chunk);
 
     if (chunk->count + 1 > chunk->capacity) {
@@ -71,8 +84,7 @@ void chunk_write8(chunk_t* chunk, uint8_t data, uint32_t line)
     }
 }
 
-void chunk_write32(chunk_t* chunk, uint32_t data, uint32_t line)
-{
+void chunk_write32(chunk_t* chunk, uint32_t data, uint32_t line) {
     assert(chunk);
 
     const uint8_t *p = (const uint8_t*)&data;
@@ -82,34 +94,17 @@ void chunk_write32(chunk_t* chunk, uint32_t data, uint32_t line)
     chunk_write8(chunk, p[3], line);
 }
 
-void chunk_write_const(chunk_t* chunk, value_t value, uint32_t line)
-{
+uint32_t chunk_add_value(chunk_t* chunk, value_t value) {
     assert(chunk);
 
     // TODO: reuse existing values?
 
-    const size_t index = value_array_write(&chunk->values, value);
+    const uint32_t index = value_array_write(&chunk->values, value); // TODO check return type
 
-    if (index < 256) {
-        chunk_write8(chunk, OP_CONST, line);
-        chunk_write8(chunk, (uint8_t)index, line);
-    } else {
-        chunk_write8(chunk, OP_CONST_LONG, line);
-        chunk_write32(chunk, index, line);
-    }
+    return index;
 }
 
-uint32_t chunk_read32(const chunk_t* chunk, size_t offset)
-{
-    assert(chunk);
-
-    uint32_t ret = 0;
-    memcpy(&ret, chunk->code + offset, sizeof(uint32_t));
-    return ret;
-}
-
-void chunk_dump(const chunk_t *chunk)
-{
+void chunk_dump(const chunk_t *chunk) {
     assert(chunk);
 
     printf("== Chunk ==\n");
@@ -131,8 +126,7 @@ void chunk_dump(const chunk_t *chunk)
     value_array_dump(&chunk->values);
 }
 
-uint32_t chunk_get_line_for_offset(const chunk_t* chunk, size_t offset)
-{
+uint32_t chunk_get_line_for_offset(const chunk_t* chunk, size_t offset) {
     assert(chunk);
 
     size_t current_offset = 0;

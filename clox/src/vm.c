@@ -23,7 +23,7 @@ typedef struct vm {
     value_t* sp;
 
     object_root_t root;
-
+    table_t globals;
 } vm_t;
 
 vm_t* vm_create(void) {
@@ -38,12 +38,16 @@ vm_t* vm_create(void) {
     vm->sp = vm->stack; // sp points to next free slot
 
     object_root_init(&vm->root);
+    table_init(&vm->globals);
 
     return vm;
 }
 
 void vm_destroy(vm_t* vm) {
     assert(vm);
+
+    table_dump(&vm->globals, "VM globals");
+    table_free(&vm->globals);
 
     object_root_dump(&vm->root, "VM objects");
     object_root_free(&vm->root);
@@ -159,8 +163,13 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     #define READ_WORD()         (vm->ip += 2, *((uint16_t *)(vm->ip - 2)))
     #define READ_DWORD()        (vm->ip += 4, *((uint32_t *)(vm->ip - 4)))
 
+    // returns value_t
     #define READ_CONST()        (chunk->values.values[READ_BYTE()])
     #define READ_CONST_LONG()   (chunk->values.values[READ_DWORD()])
+
+    // returns string_object_t*
+    //#define READ_STRING()       (AS_STRING(READ_CONST()))
+    //#define READ_STRING_LONG()  (AS_STRING(READ_CONST_LONG()))
 
     #define PUSH(value)         vm_stack_push(vm, value)
     #define POP()               vm_stack_pop(vm)
@@ -253,6 +262,54 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
             case OP_SUB: BINARY_NUMBER_OP(NUMBER_VALUE, -); break;
             case OP_MUL: BINARY_NUMBER_OP(NUMBER_VALUE, *); break;
             case OP_DIV: BINARY_NUMBER_OP(NUMBER_VALUE, /); break;
+
+            case OP_DEFINE_GLOBAL:
+            case OP_DEFINE_GLOBAL_LONG: {
+                // next byte is index to value-table which contains the name
+                // value for initialization is on the stack
+                value_t name = opcode == OP_DEFINE_GLOBAL ? READ_CONST() : READ_CONST_LONG();
+                value_t value = POP();
+                table_set(&vm->globals, name, value);
+                break;
+            }
+
+            case OP_GET_GLOBAL:
+            case OP_GET_GLOBAL_LONG: {
+                // next byte is index to value-table which contains the name
+                // value is pusht onto stack
+                value_t name = opcode == OP_GET_GLOBAL ? READ_CONST() : READ_CONST_LONG();
+                value_t value = NIL_VALUE();
+
+                if (!table_get(&vm->globals, name, &value)) {
+                    char buffer[128] = {0};
+                    print_value_to_buffer(buffer, sizeof(buffer), name);
+                    runtime_error(vm, "Undefined variable '%s'.", buffer);
+                    return RUN_RUNTIME_ERROR;
+                }
+
+                PUSH(value);
+                break;
+            }
+
+            case OP_SET_GLOBAL:
+            case OP_SET_GLOBAL_LONG: {
+                // next byte is index to value-table which contains the name
+                // value for assignment is on the stack
+                // because assignment is an expression, the value is left on the stack
+                value_t name = opcode == OP_SET_GLOBAL ? READ_CONST() : READ_CONST_LONG();
+                value_t value = PEEK(0);
+                
+                // report error if global did not exist yet
+                if (table_set(&vm->globals, name, value)) {
+                    table_delete(&vm->globals, name);
+                    char buffer[128] = {0};
+                    print_value_to_buffer(buffer, sizeof(buffer), name);
+                    runtime_error(vm, "Undefined variable '%s'", buffer);
+                    return RUN_RUNTIME_ERROR;
+                }
+
+                break;
+            }
 
             case OP_POP: POP(); break;
 

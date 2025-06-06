@@ -54,7 +54,7 @@ typedef enum {
     PREC_PRIMARY
 } precedence_t;
 
-typedef void (*parse_fn)(parser_t*);
+typedef void (*parse_fn)(parser_t*, bool can_assign);
 
 typedef struct {
     parse_fn prefix;
@@ -62,13 +62,14 @@ typedef struct {
     precedence_t precedence;
 } parse_rule_t;
 
-static void grouping(parser_t*);
-static void literal(parser_t*);
-static void number(parser_t*);
-static void string(parser_t*);
-static void unary(parser_t*);
-static void binary(parser_t*);
-static void ternary(parser_t*);
+static void grouping(parser_t*, bool);
+static void literal(parser_t*, bool);
+static void number(parser_t*, bool);
+static void string(parser_t*, bool);
+static void variable(parser_t*, bool);
+static void unary(parser_t*, bool);
+static void binary(parser_t*, bool);
+static void ternary(parser_t*, bool);
 
 static const parse_rule_t g_rules[] = {
     [TOKEN_LEFT_PAREN]      = {grouping, NULL,   PREC_NONE},
@@ -90,7 +91,7 @@ static const parse_rule_t g_rules[] = {
     [TOKEN_GREATER_EQUAL]   = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_LESS]            = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_LESS_EQUAL]      = {NULL,     binary, PREC_COMPARISON},
-    [TOKEN_IDENTIFIER]      = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_IDENTIFIER]      = {variable, NULL,   PREC_NONE},
     [TOKEN_STRING]          = {string,   NULL,   PREC_NONE},
     [TOKEN_NUMBER]          = {number,   NULL,   PREC_NONE},
     [TOKEN_AND]             = {NULL,     NULL,   PREC_NONE},
@@ -220,12 +221,61 @@ static void emit_bytes(parser_t* parser, uint8_t byte1, uint8_t byte2) {
     emit_byte(parser, byte2);
 }
 
+static void emit_long(parser_t* parser, uint32_t value) {
+    chunk_write32(parser->current_chunk, value, parser->previous.line);
+}
+
+static void emit_byte_and_long(parser_t* parser, uint8_t value1, uint32_t value2) {
+    emit_byte(parser, value1);
+    emit_long(parser, value2);
+}
+
 static void emit_return(parser_t* parser) {
     emit_byte(parser, OP_RETURN);
 }
 
+// add to value table and load onto stack.
 static void emit_const(parser_t* parser, value_t value) {
-    chunk_write_const(parser->current_chunk, value, parser->previous.line);
+    const uint32_t index = chunk_add_value(parser->current_chunk, value);
+
+    if (index < 256) {
+        emit_bytes(parser, OP_CONST, (uint8_t)index);
+    } else {
+        emit_byte_and_long(parser, OP_CONST_LONG, index);
+    }
+}
+
+// add to value table and return index.
+static uint32_t emit_string_value(parser_t* parser, const token_t* name) {
+    const string_object_t* obj = create_string_object(parser->root, name->start, name->length);
+    const value_t value = OBJECT_VALUE((object_t*)obj);
+    const size_t index = chunk_add_value(parser->current_chunk, value);
+
+    return index;
+}
+
+static void emit_define_global(parser_t* parser, uint32_t name_index) {    
+    if (name_index < 256) {
+        emit_bytes(parser, OP_DEFINE_GLOBAL, (uint8_t)name_index);
+    } else {
+        emit_byte_and_long(parser, OP_DEFINE_GLOBAL_LONG, name_index);
+    }
+}
+
+static void emit_get_global(parser_t* parser, uint32_t name_index) {
+    if (name_index < 256) {
+        emit_bytes(parser, OP_GET_GLOBAL, (uint8_t)name_index);
+    } else {
+        emit_byte_and_long(parser, OP_GET_GLOBAL_LONG, name_index);
+    }
+}
+
+static void emit_set_global(parser_t* parser, uint32_t name_index) {
+    if (name_index < 256) {
+        emit_bytes(parser, OP_SET_GLOBAL, (uint8_t)name_index);
+    } else {
+        emit_byte_and_long(parser, OP_SET_GLOBAL_LONG, name_index);
+    }
 }
 
 //
@@ -260,6 +310,9 @@ static void parse_precendence(parser_t* parser, precedence_t prec) {
 
     advance(parser);
 
+    // special handling for assignment to prevent constructs like: a * b = c + d;
+    const bool can_assign = prec <= PREC_ASSIGNMENT;
+
     const parse_fn prefix = get_rule(parser->previous.type)->prefix;
     if (prefix == NULL) {
         error_at_previous(parser, "Expect expression.");
@@ -268,7 +321,7 @@ static void parse_precendence(parser_t* parser, precedence_t prec) {
 #ifdef COMPILER_PRINT_CALLS
     pp_printf("...calling prefix %s\n", token_type_to_string(parser->previous.type));
 #endif
-    prefix(parser);
+    prefix(parser, can_assign);
 
     // consume tokens as long as the prec of their rule is >= 'prec'
     // stop if the prec of the next thing is less than 'prec'
@@ -280,7 +333,11 @@ static void parse_precendence(parser_t* parser, precedence_t prec) {
         pp_printf("...calling infix %s\n", token_type_to_string(parser->previous.type));
 #endif
         assert(infix);
-        infix(parser);
+        infix(parser, can_assign);
+    }
+
+    if (can_assign && match(parser, TOKEN_EQUAL)) {
+        error_at_previous(parser, "Invalid assignment target.");
     }
 
 #ifdef COMPILER_PRINT_CALLS
@@ -290,13 +347,18 @@ static void parse_precendence(parser_t* parser, precedence_t prec) {
 #endif
 }
 
+static size_t parse_variable_name(parser_t* parser, const char* error_message) {
+    consume(parser, TOKEN_IDENTIFIER, error_message);
+    return emit_string_value(parser, &parser->previous);
+}
+
 //
 // Functions for pratt parser
 //
 
 static void expression(parser_t* parser);
 
-static void literal(parser_t *parser) {
+static void literal(parser_t *parser, [[maybe_unused]] bool can_assign) {
     const token_type_t type = parser->previous.type;
 
     switch (type) {
@@ -315,12 +377,12 @@ static void literal(parser_t *parser) {
     }
 }
 
-static void number(parser_t* parser) {
+static void number(parser_t* parser, [[maybe_unused]] bool can_assign) {
     const double value = strtod(parser->previous.start, NULL);
     emit_const(parser, NUMBER_VALUE(value));
 }
 
-static void string(parser_t* parser) {
+static void string(parser_t* parser, [[maybe_unused]] bool can_assign) {
     const char* const chars = parser->previous.start + 1;
     const size_t length = parser->previous.length - 2;
 
@@ -330,12 +392,29 @@ static void string(parser_t* parser) {
     emit_const(parser, value);
 }
 
-static void grouping(parser_t* parser) {
+static void variable(parser_t* parser, bool can_assign) {
+    // index of name on value table
+    const uint32_t name_index = emit_string_value(parser, &parser->previous);
+
+    // get variable or set variable
+    // a.b.c
+    // a.b.c = ...
+    // depending on whether a '=' is found.
+
+    if (can_assign && match(parser, TOKEN_EQUAL)) {
+        expression(parser);
+        emit_set_global(parser, name_index);
+    } else {
+        emit_get_global(parser, name_index);
+    }
+}
+
+static void grouping(parser_t* parser, [[maybe_unused]] bool can_assign) {
     expression(parser);
     consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
 
-static void unary(parser_t* parser) {
+static void unary(parser_t* parser, [[maybe_unused]] bool can_assign) {
     // op already consumed
     const token_type_t type = parser->previous.type;
 
@@ -351,7 +430,7 @@ static void unary(parser_t* parser) {
     }
 }
 
-static void binary(parser_t* parser) {
+static void binary(parser_t* parser, [[maybe_unused]] bool can_assign) {
     // left operand and op already consumed
     const token_type_t type = parser->previous.type;
 
@@ -378,7 +457,7 @@ static void binary(parser_t* parser) {
     }
 }
 
-static void ternary(parser_t* parser) {
+static void ternary(parser_t* parser, [[maybe_unused]] bool can_assign) {
     // A ? B : C
     // left operand and '?' already consumed
 
@@ -392,60 +471,6 @@ static void ternary(parser_t* parser) {
 
     // TODO generate matching bytecode
 }
-
-//
-// ...
-//
-
-static void declaration(parser_t *parser);
-static void statement(parser_t* parser);
-static void print_statement(parser_t* parser);
-static void expression_statement(parser_t* parser);
-
-static void synchronize(parser_t* parser);
-
-
-
-static void expression(parser_t* parser) {
-    parse_precendence(parser, PREC_ASSIGNMENT);
-}
-
-static void declaration(parser_t *parser) {
-    statement(parser);
-
-    if (parser->panic_mode) {
-        synchronize(parser);
-    }
-}
-
-static void statement(parser_t* parser) {
-    if (match(parser, TOKEN_PRINT)) {
-        print_statement(parser);
-    } else {
-        expression_statement(parser);
-    }
-}
-
-static void print_statement(parser_t* parser) {
-    // eg: print 1+2+3;
-
-    // print token already consumed
-    expression(parser);
-    consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
-    emit_byte(parser, OP_PRINT);
-}
-
-static void expression_statement(parser_t* parser) {
-    // eg: 1+2+3;
-
-    expression(parser);
-    consume(parser, TOKEN_SEMICOLON, "Expect ';' after expression.");
-    emit_byte(parser, OP_POP); // discard value
-}
-
-
-
-
 
 //
 // error recovery
@@ -483,6 +508,76 @@ static void synchronize(parser_t* parser) {
         advance(parser);
     }
 }
+
+//
+// Recursive descent parser
+//
+
+static void declaration(parser_t *parser);
+static void statement(parser_t* parser);
+static void print_statement(parser_t* parser);
+static void expression_statement(parser_t* parser);
+
+static void expression(parser_t* parser) {
+    parse_precendence(parser, PREC_ASSIGNMENT);
+}
+
+static void var_declaration(parser_t* parser) {
+    // var a = b;
+    // var a;
+    // "var" already consumed
+
+    const uint32_t global_id = parse_variable_name(parser, "Expect variable name.");
+
+    if (match(parser, TOKEN_EQUAL)) {
+        expression(parser);
+    } else {
+        emit_byte(parser, OP_NIL); // default value
+    }
+
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+
+    emit_define_global(parser, global_id);
+}
+
+static void declaration(parser_t *parser) {
+    if (match(parser, TOKEN_VAR)) {
+        var_declaration(parser);
+    } else {
+        statement(parser);
+    }
+
+    if (parser->panic_mode) {
+        synchronize(parser);
+    }
+}
+
+static void statement(parser_t* parser) {
+    if (match(parser, TOKEN_PRINT)) {
+        print_statement(parser);
+    } else {
+        expression_statement(parser);
+    }
+}
+
+static void print_statement(parser_t* parser) {
+    // eg: print 1+2+3;
+
+    // print token already consumed
+    expression(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
+    emit_byte(parser, OP_PRINT);
+}
+
+static void expression_statement(parser_t* parser) {
+    // eg: 1+2+3;
+
+    expression(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after expression.");
+    emit_byte(parser, OP_POP); // discard value
+}
+
+
 
 //
 // ...

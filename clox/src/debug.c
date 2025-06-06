@@ -90,6 +90,15 @@ size_t disassemble_instruction(const chunk_t* chunk, size_t offset)
         case OP_MUL:        return simple_instruction("OP_MUL");
         case OP_DIV:        return simple_instruction("OP_DIV");
 
+        case OP_DEFINE_GLOBAL:      return constant_instruction(chunk, "OP_DEFINE_GLOBAL", offset);
+        case OP_DEFINE_GLOBAL_LONG: return long_constant_instruction(chunk, "OP_DEFINE_GLOBAL_LONG", offset);
+
+        case OP_GET_GLOBAL:      return constant_instruction(chunk, "OP_GET_GLOBAL", offset);
+        case OP_GET_GLOBAL_LONG: return long_constant_instruction(chunk, "OP_GET_GLOBAL_LONG", offset);
+
+        case OP_SET_GLOBAL:      return constant_instruction(chunk, "OP_SET_GLOBAL", offset);
+        case OP_SET_GLOBAL_LONG: return long_constant_instruction(chunk, "OP_SET_GLOBAL_LONG", offset);
+
         case OP_POP:        return simple_instruction("OP_POP");
         case OP_RETURN:     return simple_instruction("OP_RETURN");
         case OP_PRINT:      return simple_instruction("OP_PRINT");
