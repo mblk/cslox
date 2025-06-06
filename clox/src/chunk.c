@@ -34,6 +34,7 @@ void chunk_free(chunk_t* chunk) {
     chunk->line_infos_capacity = 0;
     chunk->line_infos_count = 0;
 
+    value_array_dump(&chunk->values);
     value_array_free(&chunk->values);
 }
 
@@ -97,10 +98,16 @@ void chunk_write32(chunk_t* chunk, uint32_t data, uint32_t line) {
 uint32_t chunk_add_value(chunk_t* chunk, value_t value) {
     assert(chunk);
 
-    // TODO: reuse existing values?
+    // Try so reuse existing values.
+    for (size_t i=0; i<chunk->values.count; i++) {
+        const value_t existing_value = chunk->values.values[i];
+        if (values_equal(value, existing_value)) {
+            return i;
+        }
+    }
 
-    const uint32_t index = value_array_write(&chunk->values, value); // TODO check return type
-
+    // add new value.
+    const uint32_t index = value_array_write(&chunk->values, value);
     return index;
 }
 
