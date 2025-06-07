@@ -326,3 +326,7 @@ const char* token_type_to_string(token_type_t type)
             return "???";
     }
 }
+
+bool identifiers_equal(const token_t* a, const token_t* b) {
+    return a->length == b->length && memcmp(a->start, b->start, a->length) == 0;
+}

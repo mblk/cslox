@@ -5,8 +5,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-void disassemble_chunk(const chunk_t* chunk, const char *name)
-{
+void disassemble_chunk(const chunk_t* chunk, const char *name) {
     assert(chunk);
     assert(name);
 
@@ -18,20 +17,18 @@ void disassemble_chunk(const chunk_t* chunk, const char *name)
     }
 }
 
-static size_t constant_instruction(const chunk_t* chunk, const char* name, size_t offset)
-{
-    const uint8_t index = chunk->code[offset + 1];
+static size_t constant_instruction(const chunk_t* chunk, const char* name, size_t offset) {
+    const uint8_t index = chunk_read8(chunk, offset + 1);
     const value_t value = chunk->values.values[index];
 
     printf("%-16s %4d '", name, index);
     print_value(value);
     printf("'\n");
 
-    return 2;
+    return 1 + 1;
 }
 
-static size_t long_constant_instruction(const chunk_t* chunk, const char* name, size_t offset)
-{
+static size_t long_constant_instruction(const chunk_t* chunk, const char* name, size_t offset) {
     const uint32_t index = chunk_read32(chunk, offset + 1);
     const value_t value = chunk->values.values[index];
 
@@ -42,20 +39,33 @@ static size_t long_constant_instruction(const chunk_t* chunk, const char* name, 
     return 1 + 4;
 }
 
-static size_t simple_instruction(const char *name)
-{
+static size_t byte_instruction(const chunk_t* chunk, const char* name, size_t offset) {
+    const uint8_t stack_index = chunk_read8(chunk, offset + 1);
+
+    printf("%-16s %4d\n", name, stack_index);
+
+    return 1 + 1;
+}
+
+static size_t byte_instruction_long(const chunk_t* chunk, const char* name, size_t offset) {
+    const uint32_t stack_index = chunk_read32(chunk, offset + 1);
+    
+    printf("%-16s %4d\n", name, stack_index);
+
+    return 1 + 4;
+}
+
+static size_t simple_instruction(const char *name) {
     printf("%s\n", name);
     return 1;
 }
 
-static size_t unknown_instruction(uint8_t opcode)
-{
+static size_t unknown_instruction(uint8_t opcode) {
     printf("Unknown opcode %02X\n", opcode);
     return 1;
 }
 
-size_t disassemble_instruction(const chunk_t* chunk, size_t offset)
-{
+size_t disassemble_instruction(const chunk_t* chunk, size_t offset) {
     assert(chunk);
 
     printf("%04zX ", offset);
@@ -92,12 +102,15 @@ size_t disassemble_instruction(const chunk_t* chunk, size_t offset)
 
         case OP_DEFINE_GLOBAL:      return constant_instruction(chunk, "OP_DEFINE_GLOBAL", offset);
         case OP_DEFINE_GLOBAL_LONG: return long_constant_instruction(chunk, "OP_DEFINE_GLOBAL_LONG", offset);
+        case OP_GET_GLOBAL:         return constant_instruction(chunk, "OP_GET_GLOBAL", offset);
+        case OP_GET_GLOBAL_LONG:    return long_constant_instruction(chunk, "OP_GET_GLOBAL_LONG", offset);
+        case OP_SET_GLOBAL:         return constant_instruction(chunk, "OP_SET_GLOBAL", offset);
+        case OP_SET_GLOBAL_LONG:    return long_constant_instruction(chunk, "OP_SET_GLOBAL_LONG", offset);
 
-        case OP_GET_GLOBAL:      return constant_instruction(chunk, "OP_GET_GLOBAL", offset);
-        case OP_GET_GLOBAL_LONG: return long_constant_instruction(chunk, "OP_GET_GLOBAL_LONG", offset);
-
-        case OP_SET_GLOBAL:      return constant_instruction(chunk, "OP_SET_GLOBAL", offset);
-        case OP_SET_GLOBAL_LONG: return long_constant_instruction(chunk, "OP_SET_GLOBAL_LONG", offset);
+        case OP_GET_LOCAL:      return byte_instruction(chunk, "OP_GET_LOCAL", offset);
+        case OP_GET_LOCAL_LONG: return byte_instruction_long(chunk, "OP_GET_LOCAL_LONG", offset);
+        case OP_SET_LOCAL:      return byte_instruction(chunk, "OP_SET_LOCAL", offset);
+        case OP_SET_LOCAL_LONG: return byte_instruction_long(chunk, "OP_SET_LOCAL_LONG", offset);
 
         case OP_POP:        return simple_instruction("OP_POP");
         case OP_RETURN:     return simple_instruction("OP_RETURN");

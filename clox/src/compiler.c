@@ -12,17 +12,24 @@
 
 //#define COMPILER_PRINT_CALLS
 
+#define COMPILER_MAX_LOCALS 256
 
 // Grammar:
-//
-//
-// statement → exprStmt
-//           | printStmt ;
 //
 // declaration → varDecl
 //             | statement ;
 //
+// statement   → exprStmt
+//             | printStmt
+//             | block ;
+//
+// block       → "{" declaration* "}" ;
+//
 
+typedef struct {
+    token_t name;
+    int depth;
+} local_t;
 
 typedef struct {
     scanner_t scanner;
@@ -37,7 +44,25 @@ typedef struct {
 
     chunk_t* current_chunk;
 
-} parser_t; // TODO rename to compiler_t ?
+    // ----
+
+    local_t locals[COMPILER_MAX_LOCALS];
+    int local_count;
+
+    int scope_depth;
+
+} parser_t;
+
+// typedef struct {
+//     parser_t parser;
+
+//     local_t locals[COMPILER_MAX_LOCALS];
+//     int local_count;
+
+//     int scope_depth;
+// } compiler_t;
+
+
 
 typedef enum {
     PREC_NONE,
@@ -136,6 +161,9 @@ static void parser_init(parser_t* parser, object_root_t* root, chunk_t* chunk, c
 
     parser->root = root;
     parser->current_chunk = chunk;
+
+    parser->local_count = 0;
+    parser->scope_depth = 0;
 
     // prime the parser
     advance(parser);
@@ -278,6 +306,24 @@ static void emit_set_global(parser_t* parser, uint32_t name_index) {
     }
 }
 
+static void emit_get_local(parser_t* parser, uint32_t stack_index) {
+
+    if (stack_index < 256) {
+        emit_bytes(parser, OP_GET_LOCAL, (uint8_t)stack_index);
+    } else {
+        emit_byte_and_long(parser, OP_GET_LOCAL_LONG, stack_index);
+    }
+
+}
+
+static void emit_set_local(parser_t* parser, uint32_t stack_index) {
+    if (stack_index < 256) {
+        emit_bytes(parser, OP_SET_LOCAL, (uint8_t)stack_index);
+    } else {
+        emit_byte_and_long(parser, OP_SET_LOCAL_LONG, stack_index);
+    }
+}
+
 //
 // Pratt parser
 //
@@ -347,8 +393,89 @@ static void parse_precendence(parser_t* parser, precedence_t prec) {
 #endif
 }
 
+//
+// ...
+//
+
+static void add_local(parser_t* parser, token_t name) {
+    assert(parser->scope_depth > 0);
+
+    if (parser->local_count >= COMPILER_MAX_LOCALS) {
+        error_at_previous(parser, "Too many locals variables in function.");
+        return;
+    }
+
+    size_t index = parser->local_count++;
+    local_t* local = parser->locals + index;
+
+    local->name = name;
+    local->depth = -1; // mark as 'declared but not initialized'
+    //local->depth = parser->scope_depth;
+
+    printf("new local '%.*s' index=%zu\n", (int)name.length, name.start, index);
+}
+
+static void mark_initialized(parser_t* parser) {
+    assert(parser->local_count > 0);
+
+    local_t *const top_local = parser->locals + parser->local_count - 1;
+    assert(top_local->depth == -1);
+
+    top_local->depth = parser->scope_depth;
+
+    printf("mark initialized '%.*s' depth=%d\n", top_local->name.length, top_local->name.start, top_local->depth);
+}
+
+static int resolve_local(parser_t* parser, const token_t* name) {
+    for (int i = parser->local_count-1; i >= 0; i--) {
+        const local_t* local = parser->locals + i;
+
+        if (identifiers_equal(name, &local->name)) {
+            if (local->depth == -1) {
+                error_at_previous(parser, "Can't read local variable in its own initializer.");
+            }
+            return i;
+        }
+    }
+
+    return -1; // not found
+}
+
+static void declare_variable(parser_t* parser) {
+    if (parser->scope_depth == 0) {
+        // global variables are implicitly declared
+        return;
+    }
+
+    const token_t name = parser->previous;
+
+    // check if local with same name exists in same scope
+    for (int i = parser->local_count-1; i >= 0; i--) {
+        const local_t* local = parser->locals + i;
+
+        if (local->depth != -1 && local->depth < parser->scope_depth) {
+            // found local of outer scope, no need to continue looking.
+            break;
+        }
+
+        if (identifiers_equal(&name, &local->name)) {
+            error_at_previous(parser, "Already variable with this name in this scope.");
+        }
+    }
+
+    add_local(parser, name);
+}
+
 static size_t parse_variable_name(parser_t* parser, const char* error_message) {
     consume(parser, TOKEN_IDENTIFIER, error_message);
+
+    declare_variable(parser);
+
+    if (parser->scope_depth > 0) {
+        // don't put the variable name in the value-table if it is a local variable.
+        return 0;
+    }
+
     return emit_string_value(parser, &parser->previous);
 }
 
@@ -393,19 +520,39 @@ static void string(parser_t* parser, [[maybe_unused]] bool can_assign) {
 }
 
 static void variable(parser_t* parser, bool can_assign) {
-    // index of name on value table
-    const uint32_t name_index = emit_string_value(parser, &parser->previous);
 
     // get variable or set variable
     // a.b.c
     // a.b.c = ...
     // depending on whether a '=' is found.
 
-    if (can_assign && match(parser, TOKEN_EQUAL)) {
-        expression(parser);
-        emit_set_global(parser, name_index);
+    const token_t* name = &parser->previous;
+
+    int arg = resolve_local(parser, name);
+    if (arg != -1) {
+        // local variable
+
+        const uint32_t foo = (uint32_t)arg;
+
+        if (can_assign && match(parser, TOKEN_EQUAL)) {
+            expression(parser);
+            emit_set_local(parser, foo);
+        } else {
+            emit_get_local(parser, foo);
+        }
+
     } else {
-        emit_get_global(parser, name_index);
+        // global variable
+
+        // index of name on value table
+        const uint32_t name_index = emit_string_value(parser, name);
+    
+        if (can_assign && match(parser, TOKEN_EQUAL)) {
+            expression(parser);
+            emit_set_global(parser, name_index);
+        } else {
+            emit_get_global(parser, name_index);
+        }
     }
 }
 
@@ -513,13 +660,47 @@ static void synchronize(parser_t* parser) {
 // Recursive descent parser
 //
 
+static void begin_scope(parser_t* parser) {
+    parser->scope_depth++;
+
+}
+
+static void end_scope(parser_t* parser) {
+    assert(parser->scope_depth > 0);
+    parser->scope_depth--;
+
+    // pop all locals which are no longer in scope
+    while (parser->local_count) {
+        const local_t* top_local = parser->locals + parser->local_count - 1;
+
+        if (top_local->depth <= parser->scope_depth) {
+            // must stay on the stack
+            break;
+        }
+
+        emit_byte(parser, OP_POP);
+        parser->local_count--;
+    }
+}
+
+
+
 static void declaration(parser_t *parser);
 static void statement(parser_t* parser);
 static void print_statement(parser_t* parser);
 static void expression_statement(parser_t* parser);
 
+
+
 static void expression(parser_t* parser) {
     parse_precendence(parser, PREC_ASSIGNMENT);
+}
+
+static void block(parser_t* parser) {
+    while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
+        declaration(parser);
+    }
+    consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
 static void var_declaration(parser_t* parser) {
@@ -537,7 +718,15 @@ static void var_declaration(parser_t* parser) {
 
     consume(parser, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
-    emit_define_global(parser, global_id);
+    if (parser->scope_depth > 0) {
+        // local variable, value is just left on the stack
+
+        // left as 'declared but not initialized' in parse_variable_name().
+        mark_initialized(parser);
+    } else {
+        // global variable
+        emit_define_global(parser, global_id);
+    }
 }
 
 static void declaration(parser_t *parser) {
@@ -555,6 +744,10 @@ static void declaration(parser_t *parser) {
 static void statement(parser_t* parser) {
     if (match(parser, TOKEN_PRINT)) {
         print_statement(parser);
+    } else if (match(parser, TOKEN_LEFT_BRACE)) {
+        begin_scope(parser);
+        block(parser);
+        end_scope(parser);
     } else {
         expression_statement(parser);
     }
@@ -593,17 +786,18 @@ bool compile(object_root_t* root, chunk_t* chunk, const char* source) {
     parser_t parser;
     parser_init(&parser, root, chunk, source);
 
-    // Expression parser:
-    //expression(&parser);
-    //emit_return(&parser);
-    //consume(&parser, TOKEN_EOF, "Expect end of expression.");
-
-    // Statement parser:
-    while (!match(&parser, TOKEN_EOF)) {
-        declaration(&parser);
+    if (false) {
+        // Expression parser:
+        expression(&parser);
+        emit_return(&parser);
+        consume(&parser, TOKEN_EOF, "Expect end of expression.");
+    } else {
+        // Statement parser:
+        while (!match(&parser, TOKEN_EOF)) {
+            declaration(&parser);
+        }
+        emit_return(&parser);
     }
-
-    emit_return(&parser);
 
     return !parser.had_error;
 }

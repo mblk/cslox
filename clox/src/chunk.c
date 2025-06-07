@@ -34,7 +34,7 @@ void chunk_free(chunk_t* chunk) {
     chunk->line_infos_capacity = 0;
     chunk->line_infos_count = 0;
 
-    value_array_dump(&chunk->values);
+    //value_array_dump(&chunk->values);
     value_array_free(&chunk->values);
 }
 

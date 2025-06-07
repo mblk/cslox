@@ -37,12 +37,15 @@ typedef enum {      // args:
 
     OP_DEFINE_GLOBAL,       // index to value-table for name
     OP_DEFINE_GLOBAL_LONG,  // index0, index1, index2, index3
-
     OP_GET_GLOBAL,          // index to value-table for name
     OP_GET_GLOBAL_LONG,     // index0, index1, index2, index3
-
     OP_SET_GLOBAL,          // index to value-table for name
     OP_SET_GLOBAL_LONG,     // index0, index1, index2, index3
+
+    OP_GET_LOCAL,
+    OP_GET_LOCAL_LONG,
+    OP_SET_LOCAL,
+    OP_SET_LOCAL_LONG,
 
     OP_POP,         // -
 

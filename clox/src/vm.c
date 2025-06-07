@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define VM_TRACE_EXECUTION
+//#define VM_TRACE_EXECUTION
 #define VM_PRINT_CODE
 
 typedef struct vm {
@@ -46,10 +46,10 @@ vm_t* vm_create(void) {
 void vm_destroy(vm_t* vm) {
     assert(vm);
 
-    table_dump(&vm->globals, "VM globals");
+    //table_dump(&vm->globals, "VM globals");
     table_free(&vm->globals);
 
-    object_root_dump(&vm->root, "VM objects");
+    //object_root_dump(&vm->root, "VM objects");
     object_root_free(&vm->root);
 
     free(vm);
@@ -319,9 +319,38 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
                 break;
             }
 
+            case OP_GET_LOCAL:
+            case OP_GET_LOCAL_LONG: {
+                const uint32_t stack_index = opcode == OP_GET_LOCAL ? READ_BYTE() : READ_DWORD();
+                
+                if (stack_index >= VM_STACK_MAX) {
+                    runtime_error(vm, "Stack overflow while getting local at index %u", stack_index);
+                    RETURN(RUN_RUNTIME_ERROR);
+                }
+
+                const value_t value = vm->stack[stack_index];
+                PUSH(value);
+                break;
+            }
+
+            case OP_SET_LOCAL:
+            case OP_SET_LOCAL_LONG: {
+                const uint32_t stack_index = opcode == OP_SET_LOCAL ? READ_BYTE() : READ_DWORD();
+
+                if (stack_index >= VM_STACK_MAX) {
+                    runtime_error(vm, "Stack overflow while setting local at index %u", stack_index);
+                    RETURN(RUN_RUNTIME_ERROR);
+                }
+
+                const value_t value = PEEK(0); // leave on stack
+                vm->stack[stack_index] = value;
+                break;
+            }
+
             case OP_POP: POP(); break;
 
             case OP_RETURN: {
+                assert(vm->sp == vm->stack); // make sure nothing is left on the stack - change later
                 RETURN(RUN_OK);
             }
 

@@ -52,4 +52,6 @@ token_t scan_token(scanner_t* scanner);
 
 const char* token_type_to_string(token_type_t type);
 
+bool identifiers_equal(const token_t* a, const token_t* b);
+
 #endif
