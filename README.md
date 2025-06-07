@@ -37,8 +37,15 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Scanning
     - [x] Parsing (Pratt)
     - [x] Compiling
-    - [ ] Value types (nil, bool, number)
-    - [ ] String values
+    - [x] Value types (nil, bool, number)
+    - [x] String values
+    - [x] Hashtable with value_t as key and value
+    - [x] Print/expression statements
+    - [x] Global variables
+    - [x] Block statements + local variables
+    - [ ] Const variables (maybe)
+    - [ ] Test runner
+    - [ ] If statements
     - [ ] ...
 
 ## Building / Running
