@@ -35,7 +35,7 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Basic VM
     - [x] REPL
     - [x] Scanning
-    - [x] Parsing (Pratt)
+    - [x] Parsing (Pratt + recursive descent)
     - [x] Compiling
     - [x] Value types (nil, bool, number)
     - [x] String values
@@ -50,13 +50,29 @@ This repository contains my implementation of the [lox language] following the b
 
 ## Building / Running
 
+cslox:
 ```
 $ cd src/Lox/
 $ dotnet run
 ```
 
+clox debug mode:
+```
+$ cd src/clox/
+$ make
+$ ./clox ../scripts/test.lox
+```
+
+clox in release mode:
+```
+$ cd src/clox/
+$ make BUILD=release
+$ ./clox ../scripts/test.lox
+```
+
 ## Using the REPL
 
+cslox:
 ```
 $ cd src/Lox/
 $ dotnet run
@@ -69,6 +85,7 @@ $
 
 ## Interpreting lox source files
 
+cslox:
 ```
 $ cd src/Lox/
 $ dotnet run -- ..\..\scripts\test.lox
