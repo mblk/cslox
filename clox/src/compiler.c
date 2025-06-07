@@ -11,7 +11,6 @@
 #include <string.h>
 
 //#define COMPILER_PRINT_CALLS
-
 #define COMPILER_MAX_LOCALS 256
 
 // Grammar:
@@ -52,15 +51,6 @@ typedef struct {
     int scope_depth;
 
 } parser_t;
-
-// typedef struct {
-//     parser_t parser;
-
-//     local_t locals[COMPILER_MAX_LOCALS];
-//     int local_count;
-
-//     int scope_depth;
-// } compiler_t;
 
 
 
@@ -410,9 +400,6 @@ static void add_local(parser_t* parser, token_t name) {
 
     local->name = name;
     local->depth = -1; // mark as 'declared but not initialized'
-    //local->depth = parser->scope_depth;
-
-    printf("new local '%.*s' index=%zu\n", (int)name.length, name.start, index);
 }
 
 static void mark_initialized(parser_t* parser) {
@@ -422,8 +409,6 @@ static void mark_initialized(parser_t* parser) {
     assert(top_local->depth == -1);
 
     top_local->depth = parser->scope_depth;
-
-    printf("mark initialized '%.*s' depth=%d\n", top_local->name.length, top_local->name.start, top_local->depth);
 }
 
 static int resolve_local(parser_t* parser, const token_t* name) {
@@ -520,7 +505,6 @@ static void string(parser_t* parser, [[maybe_unused]] bool can_assign) {
 }
 
 static void variable(parser_t* parser, bool can_assign) {
-
     // get variable or set variable
     // a.b.c
     // a.b.c = ...
@@ -531,22 +515,18 @@ static void variable(parser_t* parser, bool can_assign) {
     int arg = resolve_local(parser, name);
     if (arg != -1) {
         // local variable
-
-        const uint32_t foo = (uint32_t)arg;
-
+        const uint32_t stack_index = (uint32_t)arg;
         if (can_assign && match(parser, TOKEN_EQUAL)) {
             expression(parser);
-            emit_set_local(parser, foo);
+            emit_set_local(parser, stack_index);
         } else {
-            emit_get_local(parser, foo);
+            emit_get_local(parser, stack_index);
         }
 
     } else {
         // global variable
-
         // index of name on value table
         const uint32_t name_index = emit_string_value(parser, name);
-    
         if (can_assign && match(parser, TOKEN_EQUAL)) {
             expression(parser);
             emit_set_global(parser, name_index);
