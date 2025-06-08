@@ -86,6 +86,8 @@ static void variable(parser_t*, bool);
 static void unary(parser_t*, bool);
 static void binary(parser_t*, bool);
 static void ternary(parser_t*, bool);
+static void and_(parser_t*, bool); // 'and' already defined in iso646.h
+static void or_(parser_t*, bool); // 'or' already defined in iso646.h
 
 static const parse_rule_t g_rules[] = {
     [TOKEN_LEFT_PAREN]      = {grouping, NULL,   PREC_NONE},
@@ -110,7 +112,7 @@ static const parse_rule_t g_rules[] = {
     [TOKEN_IDENTIFIER]      = {variable, NULL,   PREC_NONE},
     [TOKEN_STRING]          = {string,   NULL,   PREC_NONE},
     [TOKEN_NUMBER]          = {number,   NULL,   PREC_NONE},
-    [TOKEN_AND]             = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_AND]             = {NULL,     and_,   PREC_AND},
     [TOKEN_CLASS]           = {NULL,     NULL,   PREC_NONE},
     [TOKEN_ELSE]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_FALSE]           = {literal,  NULL,   PREC_NONE},
@@ -118,7 +120,7 @@ static const parse_rule_t g_rules[] = {
     [TOKEN_FUN]             = {NULL,     NULL,   PREC_NONE},
     [TOKEN_IF]              = {NULL,     NULL,   PREC_NONE},
     [TOKEN_NIL]             = {literal,  NULL,   PREC_NONE},
-    [TOKEN_OR]              = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_OR]              = {NULL,     or_,    PREC_OR},
     [TOKEN_PRINT]           = {NULL,     NULL,   PREC_NONE},
     [TOKEN_RETURN]          = {NULL,     NULL,   PREC_NONE},
     [TOKEN_SUPER]           = {NULL,     NULL,   PREC_NONE},
@@ -640,6 +642,36 @@ static void ternary(parser_t* parser, [[maybe_unused]] bool can_assign) {
     parse_precendence(parser, PREC_ASSIGNMENT);
 
     // TODO generate matching bytecode
+}
+
+static void and_(parser_t* parser, bool) {
+    // left operand and op already consumed
+
+    // a and b
+    // a==falsey -> dont execute b and leave a on stack
+    // a==truey  -> discard a, execute b and leave b on stack
+
+    const size_t jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+
+    emit_byte(parser, OP_POP);
+    parse_precendence(parser, PREC_AND);
+
+    patch_jump(parser, jump);
+}
+
+static void or_(parser_t* parser, bool) {
+    // left operand and op already consumed
+
+    // a or b
+    // a==truey  -> dont execute b and leave a on stack
+    // b==falsey -> discard a, execute b and leave b on stack
+
+    const size_t jump = emit_jump(parser, OP_JUMP_IF_TRUE);
+
+    emit_byte(parser, OP_POP);
+    parse_precendence(parser, PREC_OR);
+
+    patch_jump(parser, jump);
 }
 
 //
