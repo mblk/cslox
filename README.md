@@ -45,7 +45,12 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Block statements + local variables
     - [x] Const local variables
     - [ ] Test runner
-    - [ ] If statements
+    - [x] If statements
+    - [x] Logical operators
+    - [x] While statements
+    - [x] For statements
+    - [x] Ternary operator
+    - [ ] (maybe) Switch statements
     - [ ] ...
 
 ## Building / Running
