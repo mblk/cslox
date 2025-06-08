@@ -301,13 +301,11 @@ static void emit_set_global(parser_t* parser, uint32_t name_index) {
 }
 
 static void emit_get_local(parser_t* parser, uint32_t stack_index) {
-
     if (stack_index < 256) {
         emit_bytes(parser, OP_GET_LOCAL, (uint8_t)stack_index);
     } else {
         emit_byte_and_long(parser, OP_GET_LOCAL_LONG, stack_index);
     }
-
 }
 
 static void emit_set_local(parser_t* parser, uint32_t stack_index) {
@@ -318,15 +316,51 @@ static void emit_set_local(parser_t* parser, uint32_t stack_index) {
     }
 }
 
+static size_t emit_jump(parser_t* parser, uint8_t opcode) {
+    const size_t addr = parser->current_chunk->count;
+
+    emit_byte(parser, opcode);
+    emit_byte(parser, 0); // byte1 of offset
+    emit_byte(parser, 0); // byte2 of offset
+
+    return addr; // address of jump-instruction
+}
+
+static void patch_jump(parser_t* parser, size_t from_addr) {
+    // jump from 'from_addr' to current address
+    const size_t to_addr = parser->current_chunk->count;
+
+    const int diff = to_addr - from_addr - 3;
+
+    printf("patch jump from=%zu to=%zu diff=%d\n", from_addr, to_addr, diff);
+
+    if (diff < INT16_MIN || diff > INT16_MAX) {
+        error_at_previous(parser, "Can't jump this far.");
+        return;
+    }
+
+    const int16_t diff16 = (int16_t)diff;
+
+    printf("diff16=%d\n", diff16);
+
+    // ...
+    uint8_t* const code = parser->current_chunk->code;
+    //code[from_addr+1] = byte1;
+    //code[from_addr+2] = byte2;
+    memcpy(code + from_addr + 1, &diff16, sizeof(int16_t));
+}
+
 //
 // Pratt parser
 //
 
 static const parse_rule_t* get_rule(token_type_t type) {
     const size_t index = (size_t)type;
-    const size_t num_rules = sizeof(g_rules) / sizeof(parse_rule_t);
 
+    #ifndef NDEBUG
+    const size_t num_rules = sizeof(g_rules) / sizeof(parse_rule_t);
     assert(index < num_rules);
+    #endif
 
     return &g_rules[index];
 }
@@ -646,7 +680,7 @@ static void synchronize(parser_t* parser) {
 }
 
 //
-// Recursive descent parser
+// scope management
 //
 
 static void begin_scope(parser_t* parser) {
@@ -672,25 +706,18 @@ static void end_scope(parser_t* parser) {
     }
 }
 
+//
+// Recursive descent parser
+//
 
-
-static void declaration(parser_t *parser);
 static void statement(parser_t* parser);
-static void print_statement(parser_t* parser);
-static void expression_statement(parser_t* parser);
-
-
+static void declaration(parser_t *parser);
 
 static void expression(parser_t* parser) {
     parse_precendence(parser, PREC_ASSIGNMENT);
 }
 
-static void block(parser_t* parser) {
-    while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
-        declaration(parser);
-    }
-    consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
-}
+
 
 static void var_declaration(parser_t* parser, bool is_const) {
     // var a = b;
@@ -722,6 +749,74 @@ static void var_declaration(parser_t* parser, bool is_const) {
     }
 }
 
+
+
+static void print_statement(parser_t* parser) {
+    // eg: print 1+2+3;
+    // print token already consumed
+    expression(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
+    emit_byte(parser, OP_PRINT);
+}
+
+static void if_statement(parser_t* parser) {
+    // 'if' already consumed
+    // if (expr) statement
+    // if (expr) statement else statement
+
+    // check condition
+    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+    expression(parser);
+    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+    const size_t jump_to_else = emit_jump(parser, OP_JUMP_IF_FALSE);
+
+    // then branch
+    emit_byte(parser, OP_POP);
+    statement(parser);
+    const size_t jump_over_else = emit_jump(parser, OP_JUMP);
+
+    // else branch
+    patch_jump(parser, jump_to_else);
+    emit_byte(parser, OP_POP);
+    if (match(parser, TOKEN_ELSE)) {
+        statement(parser);
+    }
+
+    // end
+    patch_jump(parser, jump_over_else);
+}
+
+static void block(parser_t* parser) {
+    // left brace already consumed
+    while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
+        declaration(parser);
+    }
+    consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+}
+
+static void expression_statement(parser_t* parser) {
+    // eg: 1+2+3;
+    expression(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after expression.");
+    emit_byte(parser, OP_POP); // discard value
+}
+
+
+
+static void statement(parser_t* parser) {
+    if (match(parser, TOKEN_PRINT)) {
+        print_statement(parser);
+    } else if (match(parser, TOKEN_IF)) {
+        if_statement(parser);
+    } else if (match(parser, TOKEN_LEFT_BRACE)) {
+        begin_scope(parser);
+        block(parser);
+        end_scope(parser);
+    } else {
+        expression_statement(parser);
+    }
+}
+
 static void declaration(parser_t *parser) {
     if (match(parser, TOKEN_VAR)) {
         var_declaration(parser, false);
@@ -735,37 +830,6 @@ static void declaration(parser_t *parser) {
         synchronize(parser);
     }
 }
-
-static void statement(parser_t* parser) {
-    if (match(parser, TOKEN_PRINT)) {
-        print_statement(parser);
-    } else if (match(parser, TOKEN_LEFT_BRACE)) {
-        begin_scope(parser);
-        block(parser);
-        end_scope(parser);
-    } else {
-        expression_statement(parser);
-    }
-}
-
-static void print_statement(parser_t* parser) {
-    // eg: print 1+2+3;
-
-    // print token already consumed
-    expression(parser);
-    consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
-    emit_byte(parser, OP_PRINT);
-}
-
-static void expression_statement(parser_t* parser) {
-    // eg: 1+2+3;
-
-    expression(parser);
-    consume(parser, TOKEN_SEMICOLON, "Expect ';' after expression.");
-    emit_byte(parser, OP_POP); // discard value
-}
-
-
 
 //
 // ...

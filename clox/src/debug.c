@@ -2,8 +2,10 @@
 #include "chunk.h"
 #include "value.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 
 void disassemble_chunk(const chunk_t* chunk, const char *name) {
     assert(chunk);
@@ -21,7 +23,7 @@ static size_t constant_instruction(const chunk_t* chunk, const char* name, size_
     const uint8_t index = chunk_read8(chunk, offset + 1);
     const value_t value = chunk->values.values[index];
 
-    printf("%-16s %4d '", name, index);
+    printf("%-20s %4d '", name, index);
     print_value(value);
     printf("'\n");
 
@@ -32,7 +34,7 @@ static size_t long_constant_instruction(const chunk_t* chunk, const char* name, 
     const uint32_t index = chunk_read32(chunk, offset + 1);
     const value_t value = chunk->values.values[index];
 
-    printf("%-16s %4d '", name, index);
+    printf("%-20s %4d '", name, index);
     print_value(value);
     printf("'\n");
 
@@ -42,7 +44,7 @@ static size_t long_constant_instruction(const chunk_t* chunk, const char* name, 
 static size_t byte_instruction(const chunk_t* chunk, const char* name, size_t offset) {
     const uint8_t stack_index = chunk_read8(chunk, offset + 1);
 
-    printf("%-16s %4d\n", name, stack_index);
+    printf("%-20s %4d\n", name, stack_index);
 
     return 1 + 1;
 }
@@ -50,9 +52,18 @@ static size_t byte_instruction(const chunk_t* chunk, const char* name, size_t of
 static size_t byte_instruction_long(const chunk_t* chunk, const char* name, size_t offset) {
     const uint32_t stack_index = chunk_read32(chunk, offset + 1);
     
-    printf("%-16s %4d\n", name, stack_index);
+    printf("%-20s %4d\n", name, stack_index);
 
     return 1 + 4;
+}
+
+static size_t jump_instruction(const chunk_t* chunk, const char* name, size_t offset) {
+    int16_t jump_offset = 0;
+    memcpy(&jump_offset, chunk->code + offset + 1, sizeof(int16_t));
+
+    printf("%-20s %+4d (+3 = %+d)\n", name, jump_offset, jump_offset + 3);
+
+    return 1 + 2;
 }
 
 static size_t simple_instruction(const char *name) {
@@ -68,7 +79,8 @@ static size_t unknown_instruction(uint8_t opcode) {
 size_t disassemble_instruction(const chunk_t* chunk, size_t offset) {
     assert(chunk);
 
-    printf("%04zX ", offset);
+    //printf("%04zX ", offset);
+    printf("%04zd ", offset);
 
     const uint32_t line = chunk_get_line_for_offset(chunk, offset);
     const uint32_t prev_line = offset > 0 ? chunk_get_line_for_offset(chunk, offset - 1) : 0;
@@ -111,6 +123,10 @@ size_t disassemble_instruction(const chunk_t* chunk, size_t offset) {
         case OP_GET_LOCAL_LONG: return byte_instruction_long(chunk, "OP_GET_LOCAL_LONG", offset);
         case OP_SET_LOCAL:      return byte_instruction(chunk, "OP_SET_LOCAL", offset);
         case OP_SET_LOCAL_LONG: return byte_instruction_long(chunk, "OP_SET_LOCAL_LONG", offset);
+
+        case OP_JUMP:          return jump_instruction(chunk, "OP_JUMP", offset);
+        case OP_JUMP_IF_TRUE:  return jump_instruction(chunk, "OP_JUMP_IF_TRUE", offset);
+        case OP_JUMP_IF_FALSE: return jump_instruction(chunk, "OP_JUMP_IF_FALSE", offset);
 
         case OP_POP:        return simple_instruction("OP_POP");
         case OP_RETURN:     return simple_instruction("OP_RETURN");

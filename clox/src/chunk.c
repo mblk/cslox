@@ -66,10 +66,12 @@ void chunk_write8(chunk_t* chunk, uint8_t data, uint32_t line) {
     chunk->code[chunk->count++] = data;
 
     // The current implementation only works if lines are ordered.
+    #ifndef NDEBUG
     if (chunk->line_infos_count > 0) {
         uint32_t top_line = chunk->line_infos[chunk->line_infos_count - 1].line;
         assert(line >= top_line);
     }
+    #endif
 
     // Add to top-entry?
     if (chunk->line_infos_count > 0 && chunk->line_infos[chunk->line_infos_count - 1].line == line) {

@@ -8,11 +8,13 @@
 
 #include <assert.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-//#define VM_TRACE_EXECUTION
+#define VM_TRACE_EXECUTION
+
 #define VM_PRINT_CODE
 
 typedef struct vm {
@@ -147,6 +149,25 @@ static void concatenate(vm_t* vm) {
     vm_stack_push(vm, OBJECT_VALUE((object_t*)result));
 }
 
+#ifndef NDEBUG
+static void vm_check_bounds(const vm_t* vm, size_t bytes_to_read) {
+    const uint8_t* const start = vm->chunk->code;
+    const uint8_t* const end = vm->chunk->code + vm->chunk->count;
+
+    if (vm->ip < start) {
+        printf("Error: IP before chunk start: start=%p end=%p ip=%p bytes_to_read=%zu",
+            (void*)start, (void*)end, (void*)vm->ip, bytes_to_read);
+        assert(!"IP before chunk start");
+    }
+
+    if (vm->ip + bytes_to_read > end) {
+        printf("Error: IP after chunk end. start=%p end=%p ip=%p bytes_to_read=%zu",
+            (void*)start, (void*)end, (void*)vm->ip, bytes_to_read);
+        assert(!"IP after chunk end");
+    }
+}
+#endif
+
 run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     assert(vm);
     assert(vm->chunk == NULL);
@@ -159,31 +180,47 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     vm->chunk = chunk;
     vm->ip = chunk->code;
 
-    // cleanup before returning
-    #define RETURN(value) \
-        do { \
-            vm->chunk = NULL; \
-            vm->ip = NULL; \
-            return value; \
-        } while (false)
+    #define ERROR(args...) runtime_error(vm, args)
 
-    #define READ_BYTE()         (*(vm->ip++))
-    #define READ_WORD()         (vm->ip += 2, *((uint16_t *)(vm->ip - 2)))
-    #define READ_DWORD()        (vm->ip += 4, *((uint32_t *)(vm->ip - 4)))
+    // cleanup before returning
+    #define RETURN(value) do { \
+        vm->chunk = NULL; \
+        vm->ip = NULL; \
+        return value; \
+    } while (false)
+
+    #ifndef NDEBUG
+    #define CHECK_IP_BOUNDS(read_size) vm_check_bounds(vm, read_size)
+    #else
+    #define CHECK_IP_BOUNDS(read_size) ((void)0)
+    #endif
+
+    // memcpy to prevent unaligned reads (works on x86 but is UB according to C).
+    // using feature "statement expression", works on gcc/clang but not on some others like msvc.
+    #define READ_TYPE(type) ({ \
+        const size_t _size = sizeof(type); \
+        CHECK_IP_BOUNDS(_size); \
+        type _val; \
+        memcpy(&_val, vm->ip, _size); \
+        vm->ip += _size; \
+        _val; \
+    })
+    #define READ_INT16()    READ_TYPE(int16_t)
+    #define READ_UINT32()   READ_TYPE(uint32_t)
+    
+    #ifndef NDEBUG
+    #define READ_BYTE()     READ_TYPE(uint8_t)
+    #else
+    #define READ_BYTE()     (*(vm->ip++))
+    #endif
 
     // returns value_t
     #define READ_CONST()        (chunk->values.values[READ_BYTE()])
-    #define READ_CONST_LONG()   (chunk->values.values[READ_DWORD()])
-
-    // returns string_object_t*
-    //#define READ_STRING()       (AS_STRING(READ_CONST()))
-    //#define READ_STRING_LONG()  (AS_STRING(READ_CONST_LONG()))
+    #define READ_CONST_LONG()   (chunk->values.values[READ_UINT32()])
 
     #define PUSH(value)         vm_stack_push(vm, value)
     #define POP()               vm_stack_pop(vm)
     #define PEEK(offset)        vm_stack_peek(vm, offset)
-
-    #define ERROR(args...)      runtime_error(vm, args)
 
     #define UNARY_NUMBER_OP(op) \
         do { \
@@ -217,17 +254,6 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
         } while (false)
 
     for(;;) {
-
-        // Check chunk-boundary
-        {
-            size_t next_offset = (size_t)(vm->ip - vm->chunk->code);
-
-            if (next_offset >= vm->chunk->count) {
-                printf("Error: Trying to execute code past end of chunk! (offset=%zu)\n", next_offset);
-                RETURN(RUN_RUNTIME_ERROR);
-            }
-        }
-
         #ifdef VM_TRACE_EXECUTION
         {
             printf("\n");
@@ -291,7 +317,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
                 if (!table_get(&vm->globals, name, &value)) {
                     char buffer[128] = {0};
                     print_value_to_buffer(buffer, sizeof(buffer), name);
-                    runtime_error(vm, "Undefined variable '%s'.", buffer);
+                    ERROR("Undefined variable '%s'.", buffer);
                     RETURN(RUN_RUNTIME_ERROR);
                 }
 
@@ -312,7 +338,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
                     table_delete(&vm->globals, name);
                     char buffer[128] = {0};
                     print_value_to_buffer(buffer, sizeof(buffer), name);
-                    runtime_error(vm, "Undefined variable '%s'", buffer);
+                    ERROR("Undefined variable '%s'", buffer);
                     RETURN(RUN_RUNTIME_ERROR);
                 }
 
@@ -321,10 +347,10 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
 
             case OP_GET_LOCAL:
             case OP_GET_LOCAL_LONG: {
-                const uint32_t stack_index = opcode == OP_GET_LOCAL ? READ_BYTE() : READ_DWORD();
+                const uint32_t stack_index = opcode == OP_GET_LOCAL ? READ_BYTE() : READ_UINT32();
                 
                 if (stack_index >= VM_STACK_MAX) {
-                    runtime_error(vm, "Stack overflow while getting local at index %u", stack_index);
+                    ERROR("Stack overflow while getting local at index %u", stack_index);
                     RETURN(RUN_RUNTIME_ERROR);
                 }
 
@@ -335,15 +361,35 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
 
             case OP_SET_LOCAL:
             case OP_SET_LOCAL_LONG: {
-                const uint32_t stack_index = opcode == OP_SET_LOCAL ? READ_BYTE() : READ_DWORD();
+                const uint32_t stack_index = opcode == OP_SET_LOCAL ? READ_BYTE() : READ_UINT32();
 
                 if (stack_index >= VM_STACK_MAX) {
-                    runtime_error(vm, "Stack overflow while setting local at index %u", stack_index);
+                    ERROR("Stack overflow while setting local at index %u", stack_index);
                     RETURN(RUN_RUNTIME_ERROR);
                 }
 
                 const value_t value = PEEK(0); // leave on stack
                 vm->stack[stack_index] = value;
+                break;
+            }
+
+            case OP_JUMP: {
+                const int16_t offset = READ_INT16();
+                vm->ip = vm->ip + offset;
+                break;
+            }
+            case OP_JUMP_IF_TRUE: {
+                const int16_t offset = READ_INT16();
+                if (value_is_truey(PEEK(0))) { // leave on stack
+                    vm->ip += offset;
+                }
+                break;
+            }
+            case OP_JUMP_IF_FALSE: {
+                const int16_t offset = READ_INT16();
+                if (value_is_falsey(PEEK(0))) { // leave on stack
+                    vm->ip += offset;
+                }
                 break;
             }
 
@@ -365,24 +411,29 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
             }
 
             default: {
-                printf("unknown opcode %d\n", opcode);
+                ERROR("Unknown opcode: %d\n", opcode);
                 RETURN(RUN_RUNTIME_ERROR);
             }
         }
     }
 
-    #undef POP
-    #undef PUSH
-
-    #undef READ_CONST_LONG
-    #undef READ_CONST
-
-    #undef READ_DWORD
-    #undef READ_WORD
-    #undef READ_BYTE
-
     assert(!"Must not reach");
     RETURN(RUN_RUNTIME_ERROR);
+
+    #undef BINARY_NUMBER_OP
+    #undef BINARY_FN_OP
+    #undef UNARY_NUMBER_OP
+    #undef PEEK
+    #undef POP
+    #undef PUSH
+    #undef READ_CONST_LONG
+    #undef READ_CONST
+    #undef READ_UINT32
+    #undef READ_INT16
+    #undef READ_BYTE
+    #undef READ_TYPE
+    #undef RETURN
+    #undef ERROR
 }
 
 void vm_stack_dump(const vm_t *vm) {

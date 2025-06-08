@@ -8,8 +8,8 @@
 typedef enum {      // args:
     OP_INVALID,
 
-    OP_CONST,       // index
-    OP_CONST_LONG,  // index0, index1, index2, index3
+    OP_CONST,       //  8 bit index
+    OP_CONST_LONG,  // 32 bit index
 
     OP_NIL,         // -
     OP_TRUE,        // -
@@ -35,22 +35,24 @@ typedef enum {      // args:
     OP_MUL,         // -
     OP_DIV,         // -
 
-    OP_DEFINE_GLOBAL,       // index to value-table for name
-    OP_DEFINE_GLOBAL_LONG,  // index0, index1, index2, index3
-    OP_GET_GLOBAL,          // index to value-table for name
-    OP_GET_GLOBAL_LONG,     // index0, index1, index2, index3
-    OP_SET_GLOBAL,          // index to value-table for name
-    OP_SET_GLOBAL_LONG,     // index0, index1, index2, index3
+    OP_DEFINE_GLOBAL,       //  8 bit index to value-table for name
+    OP_DEFINE_GLOBAL_LONG,  // 32 bit index to value-table for name
+    OP_GET_GLOBAL,          //  8 bit index to value-table for name
+    OP_GET_GLOBAL_LONG,     // 32 bit index to value-table for name
+    OP_SET_GLOBAL,          //  8 bit index to value-table for name
+    OP_SET_GLOBAL_LONG,     // 32 bit index to value-table for name
 
-    OP_GET_LOCAL,
-    OP_GET_LOCAL_LONG,
-    OP_SET_LOCAL,
-    OP_SET_LOCAL_LONG,
+    OP_GET_LOCAL,       // 8  bit index to stack
+    OP_GET_LOCAL_LONG,  // 32 bit index to stack
+    OP_SET_LOCAL,       // 8  bit index to stack
+    OP_SET_LOCAL_LONG,  // 32 bit index to stack
 
+    OP_JUMP,            // 16 bit signed offset
+    OP_JUMP_IF_TRUE,    // 16 bit signed offset
+    OP_JUMP_IF_FALSE,   // 16 bit signed offset
+    
     OP_POP,         // -
-
     OP_RETURN,      // -
-
     OP_PRINT,       // -
 
 } OpCode;
