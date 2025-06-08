@@ -646,15 +646,22 @@ static void ternary(parser_t* parser, [[maybe_unused]] bool can_assign) {
     // A ? B : C
     // left operand and '?' already consumed
 
-    // compile then branch
+    // condition
+    const size_t jump_to_else = emit_jump_from(parser, OP_JUMP_IF_FALSE);
+    emit_byte(parser, OP_POP);
+
+    // then branch
     parse_precendence(parser, PREC_TERNARY);
-
     consume(parser, TOKEN_COLON, "Expect ':' after then branch of ternary operator.");
+    const size_t jump_to_end = emit_jump_from(parser, OP_JUMP);
 
-    // compile else branch
+    // else branch
+    patch_jump_from(parser, jump_to_else);
+    emit_byte(parser, OP_POP);
     parse_precendence(parser, PREC_ASSIGNMENT);
 
-    // TODO generate matching bytecode
+    // end
+    patch_jump_from(parser, jump_to_end);
 }
 
 static void and_(parser_t* parser, bool) {
