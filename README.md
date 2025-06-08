@@ -43,7 +43,7 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Print/expression statements
     - [x] Global variables
     - [x] Block statements + local variables
-    - [ ] Const variables (maybe)
+    - [x] Const local variables
     - [ ] Test runner
     - [ ] If statements
     - [ ] ...

@@ -27,6 +27,7 @@
 
 typedef struct {
     token_t name;
+    bool is_const;
     int depth;
 } local_t;
 
@@ -131,6 +132,9 @@ static const parse_rule_t g_rules[] = {
     // experimental
     [TOKEN_QUESTION]        = {NULL,     ternary, PREC_TERNARY},
     [TOKEN_COLON]           = {NULL,     NULL,    PREC_NONE},
+
+    // ...
+    [TOKEN_CONST]           = {NULL,     NULL,   PREC_NONE},
 
     // TODO break, continue
 };
@@ -387,7 +391,7 @@ static void parse_precendence(parser_t* parser, precedence_t prec) {
 // ...
 //
 
-static void add_local(parser_t* parser, token_t name) {
+static void add_local(parser_t* parser, token_t name, bool is_const) {
     assert(parser->scope_depth > 0);
 
     if (parser->local_count >= COMPILER_MAX_LOCALS) {
@@ -399,6 +403,7 @@ static void add_local(parser_t* parser, token_t name) {
     local_t* local = parser->locals + index;
 
     local->name = name;
+    local->is_const = is_const;
     local->depth = -1; // mark as 'declared but not initialized'
 }
 
@@ -411,7 +416,7 @@ static void mark_initialized(parser_t* parser) {
     top_local->depth = parser->scope_depth;
 }
 
-static int resolve_local(parser_t* parser, const token_t* name) {
+static int resolve_local(parser_t* parser, const token_t* name, bool* is_const_out) {
     for (int i = parser->local_count-1; i >= 0; i--) {
         const local_t* local = parser->locals + i;
 
@@ -419,6 +424,7 @@ static int resolve_local(parser_t* parser, const token_t* name) {
             if (local->depth == -1) {
                 error_at_previous(parser, "Can't read local variable in its own initializer.");
             }
+            *is_const_out = local->is_const;
             return i;
         }
     }
@@ -426,7 +432,7 @@ static int resolve_local(parser_t* parser, const token_t* name) {
     return -1; // not found
 }
 
-static void declare_variable(parser_t* parser) {
+static void declare_variable(parser_t* parser, bool is_const) {
     if (parser->scope_depth == 0) {
         // global variables are implicitly declared
         return;
@@ -448,13 +454,13 @@ static void declare_variable(parser_t* parser) {
         }
     }
 
-    add_local(parser, name);
+    add_local(parser, name, is_const);
 }
 
-static size_t parse_variable_name(parser_t* parser, const char* error_message) {
+static size_t parse_variable_name(parser_t* parser, bool is_const, const char* error_message) {
     consume(parser, TOKEN_IDENTIFIER, error_message);
 
-    declare_variable(parser);
+    declare_variable(parser, is_const);
 
     if (parser->scope_depth > 0) {
         // don't put the variable name in the value-table if it is a local variable.
@@ -512,17 +518,20 @@ static void variable(parser_t* parser, bool can_assign) {
 
     const token_t* name = &parser->previous;
 
-    int arg = resolve_local(parser, name);
+    bool is_const = false;
+    int arg = resolve_local(parser, name, &is_const);
     if (arg != -1) {
         // local variable
         const uint32_t stack_index = (uint32_t)arg;
         if (can_assign && match(parser, TOKEN_EQUAL)) {
+            if (is_const) {
+                error_at_previous(parser, "Can't assign to const variable.");
+            }
             expression(parser);
             emit_set_local(parser, stack_index);
         } else {
             emit_get_local(parser, stack_index);
         }
-
     } else {
         // global variable
         // index of name on value table
@@ -683,12 +692,16 @@ static void block(parser_t* parser) {
     consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
-static void var_declaration(parser_t* parser) {
+static void var_declaration(parser_t* parser, bool is_const) {
     // var a = b;
     // var a;
     // "var" already consumed
 
-    const uint32_t global_id = parse_variable_name(parser, "Expect variable name.");
+    if (parser->previous.type == TOKEN_CONST && parser->scope_depth == 0) {
+        error_at_current(parser, "Const variables are not supported at global scope.");
+    }
+
+    const uint32_t global_id = parse_variable_name(parser, is_const, "Expect variable name.");
 
     if (match(parser, TOKEN_EQUAL)) {
         expression(parser);
@@ -711,7 +724,9 @@ static void var_declaration(parser_t* parser) {
 
 static void declaration(parser_t *parser) {
     if (match(parser, TOKEN_VAR)) {
-        var_declaration(parser);
+        var_declaration(parser, false);
+    } else if (match(parser, TOKEN_CONST)) {
+        var_declaration(parser, true);
     } else {
         statement(parser);
     }
@@ -763,6 +778,21 @@ bool compile(object_root_t* root, chunk_t* chunk, const char* source) {
 
     //printf("compile: START %s END\n", source);
 
+    //xxx
+    if (false)
+    {
+        scanner_t scanner;
+        scanner_init(&scanner, source);
+
+        for(;;) {
+            const token_t token = scan_token(&scanner);
+            printf("Token: %16s '%.*s'\n", token_type_to_string(token.type), token.length, token.start);
+            if (token.type == TOKEN_EOF) break;
+        }
+        return false;
+    }
+    //xxx
+    
     parser_t parser;
     parser_init(&parser, root, chunk, source);
 

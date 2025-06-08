@@ -37,6 +37,9 @@ typedef enum {
     TOKEN_QUESTION,
     TOKEN_COLON,
 
+    // ...
+    TOKEN_CONST,
+
 } token_type_t;
 
 typedef struct {
