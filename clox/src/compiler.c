@@ -318,7 +318,20 @@ static void emit_set_local(parser_t* parser, uint32_t stack_index) {
     }
 }
 
-static size_t emit_jump(parser_t* parser, uint8_t opcode) {
+static void emit_jump_to(parser_t* parser, uint8_t opcode, size_t to_addr) {
+    const size_t from_addr = parser->current_chunk->count;
+    const int diff = to_addr - from_addr - 3;
+    const int16_t diff16 = (int16_t)diff;
+
+    emit_byte(parser, opcode);
+    emit_byte(parser, 0); // byte1 of offset
+    emit_byte(parser, 0); // byte2 of offset
+
+    uint8_t* const code = parser->current_chunk->code;
+    memcpy(code + from_addr + 1, &diff16, sizeof(int16_t));
+}
+
+static size_t emit_jump_from(parser_t* parser, uint8_t opcode) {
     const size_t addr = parser->current_chunk->count;
 
     emit_byte(parser, opcode);
@@ -328,7 +341,7 @@ static size_t emit_jump(parser_t* parser, uint8_t opcode) {
     return addr; // address of jump-instruction
 }
 
-static void patch_jump(parser_t* parser, size_t from_addr) {
+static void patch_jump_from(parser_t* parser, size_t from_addr) {
     // jump from 'from_addr' to current address
     const size_t to_addr = parser->current_chunk->count;
 
@@ -651,12 +664,12 @@ static void and_(parser_t* parser, bool) {
     // a==falsey -> dont execute b and leave a on stack
     // a==truey  -> discard a, execute b and leave b on stack
 
-    const size_t jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+    const size_t jump = emit_jump_from(parser, OP_JUMP_IF_FALSE);
 
     emit_byte(parser, OP_POP);
     parse_precendence(parser, PREC_AND);
 
-    patch_jump(parser, jump);
+    patch_jump_from(parser, jump);
 }
 
 static void or_(parser_t* parser, bool) {
@@ -666,12 +679,12 @@ static void or_(parser_t* parser, bool) {
     // a==truey  -> dont execute b and leave a on stack
     // b==falsey -> discard a, execute b and leave b on stack
 
-    const size_t jump = emit_jump(parser, OP_JUMP_IF_TRUE);
+    const size_t jump = emit_jump_from(parser, OP_JUMP_IF_TRUE);
 
     emit_byte(parser, OP_POP);
     parse_precendence(parser, PREC_OR);
 
-    patch_jump(parser, jump);
+    patch_jump_from(parser, jump);
 }
 
 //
@@ -783,6 +796,14 @@ static void var_declaration(parser_t* parser, bool is_const) {
 
 
 
+
+static void expression_statement(parser_t* parser) {
+    // eg: 1+2+3;
+    expression(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after expression.");
+    emit_byte(parser, OP_POP); // discard value
+}
+
 static void print_statement(parser_t* parser) {
     // eg: print 1+2+3;
     // print token already consumed
@@ -800,22 +821,115 @@ static void if_statement(parser_t* parser) {
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
     expression(parser);
     consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
-    const size_t jump_to_else = emit_jump(parser, OP_JUMP_IF_FALSE);
+    const size_t jump_to_else = emit_jump_from(parser, OP_JUMP_IF_FALSE);
 
     // then branch
     emit_byte(parser, OP_POP);
     statement(parser);
-    const size_t jump_over_else = emit_jump(parser, OP_JUMP);
+    const size_t jump_over_else = emit_jump_from(parser, OP_JUMP);
 
     // else branch
-    patch_jump(parser, jump_to_else);
+    patch_jump_from(parser, jump_to_else);
     emit_byte(parser, OP_POP);
     if (match(parser, TOKEN_ELSE)) {
         statement(parser);
     }
 
     // end
-    patch_jump(parser, jump_over_else);
+    patch_jump_from(parser, jump_over_else);
+}
+
+static void while_statement(parser_t* parser) {
+    // 'while' already consumed
+    // while (expression) statement
+
+    // check condition
+    const size_t start_addr = parser->current_chunk->count;
+    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+    expression(parser);
+    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+    const size_t jump_to_end = emit_jump_from(parser, OP_JUMP_IF_FALSE);
+
+    // body
+    emit_byte(parser, OP_POP);
+    statement(parser);
+    emit_jump_to(parser, OP_JUMP, start_addr);
+
+    // end
+    patch_jump_from(parser, jump_to_end);
+    emit_byte(parser, OP_POP);
+}
+
+static void for_statement(parser_t* parser) {
+    // 'for' already consumed
+    // for (;;) statement
+    // initializer:
+    // - empty
+    // - var declaration
+    // - expression
+    // condition:
+    // - empty
+    // - expression
+    // increment:
+    // - empty
+    // - expression
+
+    begin_scope(parser);
+
+    // initializer
+    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+
+    if (match(parser, TOKEN_SEMICOLON)) {
+        // empty
+    } else if (match(parser, TOKEN_VAR)) {
+        var_declaration(parser, false); // consumes ';', leaves local variable on stack
+    } else {
+        expression_statement(parser); // consumes ';', discards value from stack
+    }
+
+    // condition
+    size_t loop_start = parser->current_chunk->count;
+    size_t jump_to_end = SIZE_MAX;
+    if (match(parser, TOKEN_SEMICOLON)) {
+        // emtpy
+    } else {
+        expression(parser);
+        consume(parser, TOKEN_SEMICOLON, "Expect ';' after loop condition.");
+
+        // exit loop if false
+        jump_to_end = emit_jump_from(parser, OP_JUMP_IF_FALSE);
+        emit_byte(parser, OP_POP);
+    }
+
+    // increment
+    if (match(parser, TOKEN_RIGHT_PAREN)) {
+        // empty
+    } else {
+        // must execute body before increment expression
+        const size_t jump_over_increment = emit_jump_from(parser, OP_JUMP);
+
+        const size_t increment_addr = parser->current_chunk->count;
+        expression(parser);
+        emit_byte(parser, OP_POP); // discard result
+        consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
+
+        emit_jump_to(parser, OP_JUMP, loop_start);
+        loop_start = increment_addr;
+
+        patch_jump_from(parser, jump_over_increment);
+    }
+
+    // body
+    statement(parser);
+    emit_jump_to(parser, OP_JUMP, loop_start);
+
+    // end
+    if (jump_to_end != SIZE_MAX) {
+        patch_jump_from(parser, jump_to_end);
+        emit_byte(parser, OP_POP);
+    }
+
+    end_scope(parser);
 }
 
 static void block(parser_t* parser) {
@@ -826,13 +940,6 @@ static void block(parser_t* parser) {
     consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
-static void expression_statement(parser_t* parser) {
-    // eg: 1+2+3;
-    expression(parser);
-    consume(parser, TOKEN_SEMICOLON, "Expect ';' after expression.");
-    emit_byte(parser, OP_POP); // discard value
-}
-
 
 
 static void statement(parser_t* parser) {
@@ -840,6 +947,10 @@ static void statement(parser_t* parser) {
         print_statement(parser);
     } else if (match(parser, TOKEN_IF)) {
         if_statement(parser);
+    } else if (match(parser, TOKEN_WHILE)) {
+        while_statement(parser);
+    } else if (match(parser, TOKEN_FOR)) {
+        for_statement(parser);
     } else if (match(parser, TOKEN_LEFT_BRACE)) {
         begin_scope(parser);
         block(parser);
