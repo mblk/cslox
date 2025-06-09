@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define VM_TRACE_EXECUTION
+//#define VM_TRACE_EXECUTION
 
 #define VM_PRINT_CODE
 
@@ -180,13 +180,16 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     vm->chunk = chunk;
     vm->ip = chunk->code;
 
-    #define ERROR(args...) runtime_error(vm, args)
-
     // cleanup before returning
     #define RETURN(value) do { \
         vm->chunk = NULL; \
         vm->ip = NULL; \
         return value; \
+    } while (false)
+
+    #define ERROR(args...) do { \
+        runtime_error(vm, args); \
+        RETURN(RUN_RUNTIME_ERROR); \
     } while (false)
 
     #ifndef NDEBUG
@@ -226,7 +229,6 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
         do { \
             if (!IS_NUMBER(PEEK(0))) { \
                 ERROR("Operand must be number"); \
-                RETURN(RUN_RUNTIME_ERROR); \
             } \
             value_t right = POP(); \
             value_t result = NUMBER_VALUE(op AS_NUMBER(right)); \
@@ -245,7 +247,6 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
         do { \
             if (!IS_NUMBER(PEEK(1)) || !IS_NUMBER(PEEK(1))) { \
                 ERROR("Operands must be numbers"); \
-                RETURN(RUN_RUNTIME_ERROR); \
             } \
             value_t right = POP(); \
             value_t left = POP(); \
@@ -318,7 +319,6 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
                     char buffer[128] = {0};
                     print_value_to_buffer(buffer, sizeof(buffer), name);
                     ERROR("Undefined variable '%s'.", buffer);
-                    RETURN(RUN_RUNTIME_ERROR);
                 }
 
                 PUSH(value);
@@ -339,7 +339,6 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
                     char buffer[128] = {0};
                     print_value_to_buffer(buffer, sizeof(buffer), name);
                     ERROR("Undefined variable '%s'", buffer);
-                    RETURN(RUN_RUNTIME_ERROR);
                 }
 
                 break;
@@ -351,7 +350,6 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
                 
                 if (stack_index >= VM_STACK_MAX) {
                     ERROR("Stack overflow while getting local at index %u", stack_index);
-                    RETURN(RUN_RUNTIME_ERROR);
                 }
 
                 const value_t value = vm->stack[stack_index];
@@ -365,7 +363,6 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
 
                 if (stack_index >= VM_STACK_MAX) {
                     ERROR("Stack overflow while setting local at index %u", stack_index);
-                    RETURN(RUN_RUNTIME_ERROR);
                 }
 
                 const value_t value = PEEK(0); // leave on stack
@@ -393,6 +390,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
                 break;
             }
 
+            case OP_DUP: PUSH(PEEK(0)); break;
             case OP_POP: POP(); break;
 
             case OP_RETURN: {
@@ -412,7 +410,6 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
 
             default: {
                 ERROR("Unknown opcode: %d\n", opcode);
-                RETURN(RUN_RUNTIME_ERROR);
             }
         }
     }
@@ -432,8 +429,8 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     #undef READ_INT16
     #undef READ_BYTE
     #undef READ_TYPE
-    #undef RETURN
     #undef ERROR
+    #undef RETURN
 }
 
 void vm_stack_dump(const vm_t *vm) {

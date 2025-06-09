@@ -40,6 +40,11 @@ typedef enum {
     // ...
     TOKEN_CONST,
 
+    // ...
+    TOKEN_SWITCH,
+    TOKEN_CASE,
+    TOKEN_DEFAULT,
+
 } token_type_t;
 
 typedef struct {

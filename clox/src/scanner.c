@@ -4,8 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-void scanner_init(scanner_t* scanner, const char* source)
-{
+void scanner_init(scanner_t* scanner, const char* source) {
     assert(scanner);
     assert(source);
 
@@ -14,24 +13,20 @@ void scanner_init(scanner_t* scanner, const char* source)
     scanner->line = 1;
 }
 
-inline static char peek(const scanner_t* scanner)
-{
+inline static char peek(const scanner_t* scanner) {
     return *scanner->current;
 }
 
-static bool is_at_end(const scanner_t* scanner)
-{
+static bool is_at_end(const scanner_t* scanner) {
     return peek(scanner) == '\0';
 }
 
-static char peek_next(const scanner_t* scanner)
-{
+static char peek_next(const scanner_t* scanner) {
     if (is_at_end(scanner)) return '\0';
     return *(scanner->current + 1);
 }
 
-static char advance(scanner_t* scanner)
-{
+static char advance(scanner_t* scanner) {
     char c = peek(scanner);
     scanner->current++;
 
@@ -42,8 +37,7 @@ static char advance(scanner_t* scanner)
     return c;
 }
 
-static bool match(scanner_t* scanner, char expected)
-{
+static bool match(scanner_t* scanner, char expected) {
     if (is_at_end(scanner)) return false;
     if (peek(scanner) != expected) return false;
 
@@ -51,8 +45,7 @@ static bool match(scanner_t* scanner, char expected)
     return true;
 }
 
-static void skip_whitespace(scanner_t* scanner)
-{
+static void skip_whitespace(scanner_t* scanner) {
     for(;;) {
         const char c = peek(scanner);
         switch (c) {
@@ -81,10 +74,7 @@ static void skip_whitespace(scanner_t* scanner)
     }
 }
 
-static token_t make_token(const scanner_t* scanner, token_type_t type)
-{
-    //printf("make token %d %s\n", type, token_type_to_string(type));
-
+static token_t make_token(const scanner_t* scanner, token_type_t type) {
     token_t token;
     token.type = type;
     token.line = scanner->line;
@@ -93,8 +83,7 @@ static token_t make_token(const scanner_t* scanner, token_type_t type)
     return token;
 }
 
-static token_t error_token(const scanner_t* scanner, const char* message)
-{
+static token_t error_token(const scanner_t* scanner, const char* message) {
     token_t token;
     token.type = TOKEN_ERROR;
     token.line = scanner->line;
@@ -103,8 +92,7 @@ static token_t error_token(const scanner_t* scanner, const char* message)
     return token;
 }
 
-static token_t string(scanner_t* scanner)
-{
+static token_t string(scanner_t* scanner) {
     while (peek(scanner) != '"' && !is_at_end(scanner)) {
         advance(scanner);
     }
@@ -118,25 +106,21 @@ static token_t string(scanner_t* scanner)
     return make_token(scanner, TOKEN_STRING);
 }
 
-static bool is_digit(char c)
-{
+static bool is_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
-static bool is_alpha(char c)
-{
+static bool is_alpha(char c) {
     return (c >= 'a' && c <= 'z') ||
            (c >= 'A' && c <= 'Z') ||
            c == '_';
 }
 
-static bool is_alpha_numeric(char c)
-{
+static bool is_alpha_numeric(char c) {
     return is_digit(c) || is_alpha(c);
 }
 
-static token_t number(scanner_t *scanner)
-{
+static token_t number(scanner_t *scanner) {
     // digits before decimal point
     while (is_digit(peek(scanner))) {
         advance(scanner);
@@ -156,8 +140,7 @@ static token_t number(scanner_t *scanner)
     return make_token(scanner, TOKEN_NUMBER);
 }
 
-static token_type_t check_keyword(const scanner_t* scanner, size_t start, size_t length, const char *rest, token_type_t type)
-{
+static token_type_t check_keyword(const scanner_t* scanner, size_t start, size_t length, const char *rest, token_type_t type) {
     size_t scanned_length = (size_t)(scanner->current - scanner->start);
 
     if (scanned_length == start + length) {
@@ -169,24 +152,24 @@ static token_type_t check_keyword(const scanner_t* scanner, size_t start, size_t
     return TOKEN_IDENTIFIER;
 }
 
-static token_type_t identifier_type(const scanner_t *scanner)
-{
+static token_type_t identifier_type(const scanner_t *scanner) {
     switch(scanner->start[0]) {
         case 'a': return check_keyword(scanner, 1, 2, "nd", TOKEN_AND);
         case 'b': return check_keyword(scanner, 1, 4, "reak", TOKEN_BREAK);
+        case 'd': return check_keyword(scanner, 1, 6, "efault", TOKEN_DEFAULT);
         case 'e': return check_keyword(scanner, 1, 3, "lse", TOKEN_ELSE);
         case 'i': return check_keyword(scanner, 1, 1, "f", TOKEN_IF);
         case 'n': return check_keyword(scanner, 1, 2, "il", TOKEN_NIL);
         case 'o': return check_keyword(scanner, 1, 1, "r", TOKEN_OR);
         case 'p': return check_keyword(scanner, 1, 4, "rint", TOKEN_PRINT);
         case 'r': return check_keyword(scanner, 1, 5, "eturn", TOKEN_RETURN);
-        case 's': return check_keyword(scanner, 1, 4, "uper", TOKEN_SUPER);
         case 'v': return check_keyword(scanner, 1, 2, "ar", TOKEN_VAR);
         case 'w': return check_keyword(scanner, 1, 4, "hile", TOKEN_WHILE);
-
+        
         case 'c':
             if (scanner->current - scanner->start > 1) {
                 switch (scanner->start[1]) {
+                    case 'a': return check_keyword(scanner, 2, 2, "se", TOKEN_CASE);
                     case 'l': return check_keyword(scanner, 2, 3, "ass", TOKEN_CLASS);
                     case 'o':
                         if (scanner->current - scanner->start > 2) {
@@ -205,13 +188,22 @@ static token_type_t identifier_type(const scanner_t *scanner)
                 }
             }
             break;
-
+        
         case 'f':
             if (scanner->current - scanner->start > 1) {
                 switch (scanner->start[1]) {
                     case 'a': return check_keyword(scanner, 2, 3, "lse", TOKEN_FALSE);
                     case 'o': return check_keyword(scanner, 2, 1, "r", TOKEN_FOR);
                     case 'u': return check_keyword(scanner, 2, 1, "n", TOKEN_FUN);
+                }
+            }
+            break;
+        
+        case 's':
+            if (scanner->current - scanner->start > 1) {
+                switch (scanner->start[1]) {
+                    case 'u': return check_keyword(scanner, 2, 3, "per", TOKEN_SUPER);
+                    case 'w': return check_keyword(scanner, 2, 4, "itch", TOKEN_SWITCH);
                 }
             }
             break;
@@ -229,8 +221,7 @@ static token_type_t identifier_type(const scanner_t *scanner)
     return TOKEN_IDENTIFIER;
 }
 
-static token_t identifier(scanner_t* scanner)
-{
+static token_t identifier(scanner_t* scanner) {
     while (is_alpha_numeric(peek(scanner))) {
         advance(scanner);
     }
@@ -238,8 +229,7 @@ static token_t identifier(scanner_t* scanner)
     return make_token(scanner, identifier_type(scanner));
 }
 
-token_t scan_token(scanner_t* scanner)
-{
+token_t scan_token(scanner_t* scanner) {
     assert(scanner);
 
     skip_whitespace(scanner);
@@ -283,8 +273,7 @@ token_t scan_token(scanner_t* scanner)
     return error_token(scanner, "Unexpected character.");
 }
 
-const char* token_type_to_string(token_type_t type)
-{
+const char* token_type_to_string(token_type_t type) {
     switch (type) {
         case TOKEN_NONE: return "NONE";
         case TOKEN_LEFT_PAREN: return "LEFT_PAREN";
@@ -333,8 +322,10 @@ const char* token_type_to_string(token_type_t type)
         // experimental
         case TOKEN_QUESTION: return "QUESTION";
         case TOKEN_COLON: return "COLON";
-
         case TOKEN_CONST: return "CONST";
+        case TOKEN_SWITCH: return "SWITCH";
+        case TOKEN_CASE: return "CASE";
+        case TOKEN_DEFAULT: return "DEFAULT";
 
         default:
             assert(!"Missing case in token_type_to_string");

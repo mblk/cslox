@@ -137,6 +137,9 @@ static const parse_rule_t g_rules[] = {
 
     // ...
     [TOKEN_CONST]           = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_SWITCH]          = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_CASE]            = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_DEFAULT]         = {NULL,     NULL,   PREC_NONE},
 
     // TODO break, continue
 };
@@ -321,6 +324,10 @@ static void emit_set_local(parser_t* parser, uint32_t stack_index) {
 static void emit_jump_to(parser_t* parser, uint8_t opcode, size_t to_addr) {
     const size_t from_addr = parser->current_chunk->count;
     const int diff = to_addr - from_addr - 3;
+    if (diff < INT16_MIN || diff > INT16_MAX) {
+        error_at_previous(parser, "Can't jump this far.");
+        return;
+    }
     const int16_t diff16 = (int16_t)diff;
 
     emit_byte(parser, opcode);
@@ -344,24 +351,14 @@ static size_t emit_jump_from(parser_t* parser, uint8_t opcode) {
 static void patch_jump_from(parser_t* parser, size_t from_addr) {
     // jump from 'from_addr' to current address
     const size_t to_addr = parser->current_chunk->count;
-
     const int diff = to_addr - from_addr - 3;
-
-    printf("patch jump from=%zu to=%zu diff=%d\n", from_addr, to_addr, diff);
-
     if (diff < INT16_MIN || diff > INT16_MAX) {
         error_at_previous(parser, "Can't jump this far.");
         return;
     }
-
     const int16_t diff16 = (int16_t)diff;
 
-    printf("diff16=%d\n", diff16);
-
-    // ...
     uint8_t* const code = parser->current_chunk->code;
-    //code[from_addr+1] = byte1;
-    //code[from_addr+2] = byte2;
     memcpy(code + from_addr + 1, &diff16, sizeof(int16_t));
 }
 
@@ -440,12 +437,14 @@ static void parse_precendence(parser_t* parser, precedence_t prec) {
 // ...
 //
 
-static void add_local(parser_t* parser, token_t name, bool is_const) {
+static const token_t g_hidden_local_name = { TOKEN_NONE, "hidden", 6, 0 };
+
+static size_t add_local(parser_t* parser, token_t name, bool is_const) {
     assert(parser->scope_depth > 0);
 
     if (parser->local_count >= COMPILER_MAX_LOCALS) {
         error_at_previous(parser, "Too many locals variables in function.");
-        return;
+        return 0;
     }
 
     size_t index = parser->local_count++;
@@ -454,6 +453,8 @@ static void add_local(parser_t* parser, token_t name, bool is_const) {
     local->name = name;
     local->is_const = is_const;
     local->depth = -1; // mark as 'declared but not initialized'
+
+    return index;
 }
 
 static void mark_initialized(parser_t* parser) {
@@ -939,6 +940,141 @@ static void for_statement(parser_t* parser) {
     end_scope(parser);
 }
 
+
+
+
+static void switch_case_literal(parser_t* parser) {
+    // case literal
+    if (match(parser, TOKEN_NUMBER)) {
+        number(parser, false);
+    } else if (match(parser, TOKEN_STRING)) {
+        string(parser, false);
+    } else if (match(parser, TOKEN_NIL)) {
+        literal(parser, false);
+    } else if (match(parser, TOKEN_TRUE)) {
+        literal(parser, false);
+    } else if (match(parser, TOKEN_FALSE)) {
+        literal(parser, false);
+    } else {
+        error_at_current(parser, "Invalid case literal.");
+    }
+}
+
+static void switch_case_statements(parser_t* parser) {
+    for(;;) {
+        // found end?
+        if (check(parser, TOKEN_CASE)) {
+            break;
+        }
+        else if (check(parser, TOKEN_DEFAULT)) {
+            break;
+        }
+        else if (check(parser, TOKEN_RIGHT_BRACE)) {
+            break;
+        }
+        statement(parser);
+    }
+}
+
+static void switch_statement(parser_t* parser) {
+    // 'switch' already consumed
+
+    // switch (expr) {
+    //     case literal: statement*
+    //     case literal: statement*
+    //     ...
+    //     (optional) default: statement*
+    // }
+
+    // make a new scope so the switch-value can be stored as a hidden local variable.
+    begin_scope(parser);
+
+    // parse switch-value and store it as a local variable.
+    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'switch'.");
+
+    expression(parser);
+    const size_t local_index = add_local(parser, g_hidden_local_name, true);
+    mark_initialized(parser);
+
+    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after switch expression.");
+    consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after 'switch(...)'.");
+
+    // used to link else-case-jumps.
+    size_t jump_to_next_case = SIZE_MAX; // SIZE_MAX means none
+
+    // used to jump from end of each case to end of switch.
+    constexpr size_t jump_to_end_max = 128; // support up to 128 cases
+    size_t jump_to_end[jump_to_end_max];
+    size_t jump_to_end_count = 0;
+
+    // used for error checking (multipe default cases, etc)
+    bool default_case_found = false;
+
+    for(;;) {
+        if (match(parser, TOKEN_RIGHT_BRACE)) {
+            break;
+        } else if (match(parser, TOKEN_CASE)) {
+            if (default_case_found) {
+                error_at_previous(parser, "Value-cases must be defined before default-case.");
+            }
+
+            // patch jump from previous case to next case (if there is one)
+            if (jump_to_next_case != SIZE_MAX) {
+                patch_jump_from(parser, jump_to_next_case);
+                jump_to_next_case = SIZE_MAX;
+                emit_byte(parser, OP_POP); // pop false
+            }
+
+            emit_get_local(parser, local_index);                            // Stack: [switch-value]
+            switch_case_literal(parser);                                    // Stack: [switch-value] [case-value]
+            emit_byte(parser, OP_EQUAL);                                    // Stack: [true/false]
+            jump_to_next_case = emit_jump_from(parser, OP_JUMP_IF_FALSE);
+            emit_byte(parser, OP_POP);                                      // Stack: -
+
+            consume(parser, TOKEN_COLON, "Expect ':' after case value.");
+            switch_case_statements(parser);
+
+            assert(jump_to_end_count < jump_to_end_max);
+            jump_to_end[jump_to_end_count++] = emit_jump_from(parser, OP_JUMP);
+        } else if (match(parser, TOKEN_DEFAULT)) {
+            if (default_case_found) {
+                error_at_previous(parser, "Default-case already defined.");
+            }
+            default_case_found = true;
+
+            // patch jump from previous case to next case (if there is one)
+            if (jump_to_next_case != SIZE_MAX) {
+                patch_jump_from(parser, jump_to_next_case);
+                jump_to_next_case = SIZE_MAX;
+                emit_byte(parser, OP_POP); // pop false
+            }
+
+            consume(parser, TOKEN_COLON, "Expect ':' after 'default'.");
+            switch_case_statements(parser);
+
+            assert(jump_to_end_count < jump_to_end_max);
+            jump_to_end[jump_to_end_count++] = emit_jump_from(parser, OP_JUMP);
+        } else {
+            error_at_current(parser, "Invalid token in switch-block.");
+            break;
+        }
+    }
+
+    // patch jump from previous case to next case (if there is one)
+    if (jump_to_next_case != SIZE_MAX) {
+        patch_jump_from(parser, jump_to_next_case);
+        jump_to_next_case = SIZE_MAX;
+        emit_byte(parser, OP_POP); // pop false
+    }
+
+    // patch jumps from end of case-statements to end of switch-statement
+    for (size_t i=0; i<jump_to_end_count; i++) {
+        patch_jump_from(parser, jump_to_end[i]);
+    }
+
+    end_scope(parser);
+}
+
 static void block(parser_t* parser) {
     // left brace already consumed
     while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
@@ -958,6 +1094,8 @@ static void statement(parser_t* parser) {
         while_statement(parser);
     } else if (match(parser, TOKEN_FOR)) {
         for_statement(parser);
+    } else if (match(parser, TOKEN_SWITCH)) {
+        switch_statement(parser);
     } else if (match(parser, TOKEN_LEFT_BRACE)) {
         begin_scope(parser);
         block(parser);

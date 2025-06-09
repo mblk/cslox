@@ -50,7 +50,9 @@ This repository contains my implementation of the [lox language] following the b
     - [x] While statements
     - [x] For statements
     - [x] Ternary operator
-    - [ ] (maybe) Switch statements
+    - [x] Switch statements
+    - [ ] break/continue for loops
+    - [ ] Functions and calls
     - [ ] ...
 
 ## Building / Running
