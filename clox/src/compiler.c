@@ -11,7 +11,15 @@
 #include <string.h>
 
 //#define COMPILER_PRINT_CALLS
+
+// Max number of locals per chunk
 #define COMPILER_MAX_LOCALS 256
+
+// Max number of nested loops
+#define COMPILER_MAX_LOOPS 16
+
+// Max number of breaks per loop
+#define COMPILER_MAX_BREAKS 16
 
 // Grammar:
 //
@@ -32,6 +40,13 @@ typedef struct {
 } local_t;
 
 typedef struct {
+    size_t continue_addr;
+    size_t break_jumps[COMPILER_MAX_BREAKS];
+    size_t break_jump_count;
+    int scope_depth_at_start;
+} loop_t;
+
+typedef struct {
     scanner_t scanner;
 
     token_t current;
@@ -45,11 +60,16 @@ typedef struct {
     chunk_t* current_chunk;
 
     // ----
+    // compiler_t:
 
     local_t locals[COMPILER_MAX_LOCALS];
     int local_count;
 
     int scope_depth;
+
+    // for break/continue
+    loop_t loops[COMPILER_MAX_LOOPS];
+    size_t loop_count;
 
 } parser_t;
 
@@ -140,8 +160,8 @@ static const parse_rule_t g_rules[] = {
     [TOKEN_SWITCH]          = {NULL,     NULL,   PREC_NONE},
     [TOKEN_CASE]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_DEFAULT]         = {NULL,     NULL,   PREC_NONE},
-
-    // TODO break, continue
+    [TOKEN_BREAK]           = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_CONTINUE]        = {NULL,     NULL,   PREC_NONE},
 };
 
 //
@@ -759,6 +779,68 @@ static void end_scope(parser_t* parser) {
     }
 }
 
+static void simulate_end_scope(parser_t* parser, size_t count) {
+    assert(parser->scope_depth > 0);
+    assert(count > 0);
+
+    int scope_depth = parser->scope_depth - count;
+    size_t local_count = parser->local_count;
+
+    // pop all locals which are no longer in scope
+    while (local_count) {
+        const local_t* top_local = parser->locals + local_count - 1;
+
+        if (top_local->depth <= scope_depth) {
+            // must stay on the stack
+            break;
+        }
+
+        emit_byte(parser, OP_POP);
+        local_count--;
+    }
+}
+
+static loop_t* begin_loop(parser_t* parser) {
+    assert(parser->loop_count < COMPILER_MAX_LOOPS);
+
+    loop_t* loop = parser->loops + parser->loop_count++;
+
+    loop->continue_addr = parser->current_chunk->count; // default start - different for some loops
+    loop->break_jump_count = 0;
+    loop->scope_depth_at_start = parser->scope_depth;
+
+    return loop;
+}
+
+static void end_loop(parser_t* parser) {
+    assert(parser->loop_count > 0);
+
+    loop_t* loop = parser->loops + parser->loop_count - 1;
+
+    // patch jumps from break statements
+    for (size_t i=0; i<loop->break_jump_count; i++) {
+        patch_jump_from(parser, loop->break_jumps[i]);
+    }
+
+    parser->loop_count--;
+}
+
+static loop_t* resolve_loop(parser_t* parser, size_t loop_offset) {
+
+    const size_t loop_index = parser->loop_count - loop_offset;
+
+    if (loop_index >= parser->loop_count) {
+        error_at_previous(parser, "Invalid loop offset.");
+        return NULL;
+    }
+    
+    loop_t* const loop = parser->loops + loop_index;
+
+    assert(parser->scope_depth >= loop->scope_depth_at_start);
+
+    return loop;
+}
+
 //
 // Recursive descent parser
 //
@@ -851,6 +933,8 @@ static void while_statement(parser_t* parser) {
     // 'while' already consumed
     // while (expression) statement
 
+    begin_loop(parser);
+
     // check condition
     const size_t start_addr = parser->current_chunk->count;
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
@@ -866,6 +950,9 @@ static void while_statement(parser_t* parser) {
     // end
     patch_jump_from(parser, jump_to_end);
     emit_byte(parser, OP_POP);
+
+    // end loop: patch jumps from breaks
+    end_loop(parser);
 }
 
 static void for_statement(parser_t* parser) {
@@ -883,6 +970,8 @@ static void for_statement(parser_t* parser) {
     // - expression
 
     begin_scope(parser);
+
+    loop_t* loop = begin_loop(parser);
 
     // initializer
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
@@ -927,6 +1016,8 @@ static void for_statement(parser_t* parser) {
         patch_jump_from(parser, jump_over_increment);
     }
 
+    loop->continue_addr = loop_start; // either addr of condition or increment-expression
+
     // body
     statement(parser);
     emit_jump_to(parser, OP_JUMP, loop_start);
@@ -937,11 +1028,12 @@ static void for_statement(parser_t* parser) {
         emit_byte(parser, OP_POP);
     }
 
+    // end loop: patch jumps from breaks
+    end_loop(parser);
+
+    // end scope: drop locals
     end_scope(parser);
 }
-
-
-
 
 static void switch_case_literal(parser_t* parser) {
     // case literal
@@ -1083,6 +1175,79 @@ static void block(parser_t* parser) {
     consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
+static size_t parse_loop_offset(parser_t* parser) {
+
+    if (match(parser, TOKEN_NUMBER)) {
+        const double loop_number_ = strtod(parser->previous.start, NULL);
+        const long loop_number = strtol(parser->previous.start, NULL, 10);
+
+        if ((long)loop_number_ != loop_number) {
+            error_at_previous(parser, "Loop offset must be an integer.");
+        }
+        if (loop_number < 1) {
+            error_at_previous(parser, "Loop offset must be positive.");
+        }
+
+        return (size_t)loop_number;
+    }
+
+    return 1; // target the closest loop by default
+}
+
+static void break_statement(parser_t* parser) {
+    // 'break' already consumed
+
+    // break;
+    // break 1;
+    // break 2;
+    // ...
+    
+    if (parser->loop_count == 0) {
+        error_at_previous(parser, "Can't use 'break' outside loops.");
+    }
+
+    const size_t target_loop_offset = parse_loop_offset(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after 'break'.");
+    loop_t* const target_loop = resolve_loop(parser, target_loop_offset);
+    if (!target_loop) return;
+
+    // we might be jumping to a different scope-depth.
+    // pop all the locals that need to go.
+    if (parser->scope_depth > target_loop->scope_depth_at_start) {
+        const size_t scopes_to_drop = parser->scope_depth - target_loop->scope_depth_at_start;
+        simulate_end_scope(parser, scopes_to_drop);
+    }
+
+    // register jump to exit of target loop
+    assert(target_loop->break_jump_count < COMPILER_MAX_BREAKS);
+    target_loop->break_jumps[target_loop->break_jump_count++] = emit_jump_from(parser, OP_JUMP);
+}
+
+static void continue_statement(parser_t* parser) {
+    // 'continue' already consumed
+    
+    if (parser->loop_count == 0) {
+        error_at_previous(parser, "Can't use 'continue' outside loops.");
+    }
+
+    const size_t target_loop_offset = parse_loop_offset(parser);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after 'continue'.");
+    loop_t* const target_loop = resolve_loop(parser, target_loop_offset);
+    if (!target_loop) return;
+
+    // we might be jumping to a different scope-depth.
+    // pop all the locals that need to go.
+    if (parser->scope_depth > target_loop->scope_depth_at_start) {
+        const size_t scopes_to_drop = parser->scope_depth - target_loop->scope_depth_at_start;
+        simulate_end_scope(parser, scopes_to_drop);
+    }
+
+    // jump to start
+    assert(target_loop->continue_addr != SIZE_MAX);
+    emit_jump_to(parser, OP_JUMP, target_loop->continue_addr);
+}
+
+
 
 
 static void statement(parser_t* parser) {
@@ -1096,6 +1261,10 @@ static void statement(parser_t* parser) {
         for_statement(parser);
     } else if (match(parser, TOKEN_SWITCH)) {
         switch_statement(parser);
+    } else if (match(parser, TOKEN_BREAK)) {
+        break_statement(parser);
+    } else if (match(parser, TOKEN_CONTINUE)) {
+        continue_statement(parser);
     } else if (match(parser, TOKEN_LEFT_BRACE)) {
         begin_scope(parser);
         block(parser);

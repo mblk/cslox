@@ -257,6 +257,8 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     for(;;) {
         #ifdef VM_TRACE_EXECUTION
         {
+            assert((void*)vm->chunk > (void*)0x100); // no-one overwrote the pointer with garbage
+
             printf("\n");
             vm_stack_dump(vm);
             printf("Next: ");
@@ -447,7 +449,10 @@ void vm_stack_dump(const vm_t *vm) {
 void vm_stack_push(vm_t* vm, value_t value) {
     assert(vm);
 
-    //printf("push %lf\n", value);
+    if (vm->sp == vm->stack + VM_STACK_MAX) {
+        printf("Error: Can't push to stack, stack is full!");
+        assert(!"Error: Can't push to stack, stack is full!");
+    }
 
     *vm->sp = value;
     vm->sp++;
@@ -456,10 +461,13 @@ void vm_stack_push(vm_t* vm, value_t value) {
 value_t vm_stack_pop(vm_t* vm) {
     assert(vm);
 
+    if (vm->sp == vm->stack) {
+        printf("Error: Can't pop from stack, stack is empty!");
+        assert(!"Error: Can't pop from stack, stack is empty!");
+    }
+
     vm->sp--;
     value_t value = *vm->sp;
-
-    //printf("pop %lf\n", value);
 
     return value;
 }

@@ -84,7 +84,7 @@ void print_value(value_t value) {
             printf("%s", AS_BOOL(value) ? "true" : "false");
             break;
         case VALUE_TYPE_NUMBER:
-            printf("%lf", AS_NUMBER(value));
+            printf("%g", AS_NUMBER(value));
             break;
         case VALUE_TYPE_OBJECT:
             print_object(value);
@@ -113,7 +113,7 @@ void print_value_to_buffer(char* buffer, size_t max_length, value_t value) {
             snprintf(buffer, max_length, "%s", AS_BOOL(value) ? "true" : "false");
             break;
         case VALUE_TYPE_NUMBER:
-            snprintf(buffer, max_length, "%lf", AS_NUMBER(value));
+            snprintf(buffer, max_length, "%g", AS_NUMBER(value));
             break;
         case VALUE_TYPE_OBJECT:
             print_object_to_buffer(buffer, max_length, value);
