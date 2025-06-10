@@ -21,20 +21,10 @@
 // Max number of breaks per loop
 #define COMPILER_MAX_BREAKS 16
 
-// Grammar:
-//
-// declaration → varDecl
-//             | statement ;
-//
-// statement   → exprStmt
-//             | printStmt
-//             | block ;
-//
-// block       → "{" declaration* "}" ;
-//
+
 
 typedef struct {
-    token_t name;
+    token_t name; // Note: points to original source, only valid as long as source is valid.
     bool is_const;
     int depth;
 } local_t;
@@ -758,7 +748,6 @@ static void synchronize(parser_t* parser) {
 
 static void begin_scope(parser_t* parser) {
     parser->scope_depth++;
-
 }
 
 static void end_scope(parser_t* parser) {
@@ -803,7 +792,7 @@ static void simulate_end_scope(parser_t* parser, size_t count) {
 static loop_t* begin_loop(parser_t* parser) {
     assert(parser->loop_count < COMPILER_MAX_LOOPS);
 
-    loop_t* loop = parser->loops + parser->loop_count++;
+    loop_t* const loop = parser->loops + parser->loop_count++;
 
     loop->continue_addr = parser->current_chunk->count; // default start - different for some loops
     loop->break_jump_count = 0;
@@ -815,7 +804,7 @@ static loop_t* begin_loop(parser_t* parser) {
 static void end_loop(parser_t* parser) {
     assert(parser->loop_count > 0);
 
-    loop_t* loop = parser->loops + parser->loop_count - 1;
+    loop_t* const loop = parser->loops + parser->loop_count - 1;
 
     // patch jumps from break statements
     for (size_t i=0; i<loop->break_jump_count; i++) {
@@ -826,18 +815,16 @@ static void end_loop(parser_t* parser) {
 }
 
 static loop_t* resolve_loop(parser_t* parser, size_t loop_offset) {
+    assert(parser->loop_count > 0);
 
     const size_t loop_index = parser->loop_count - loop_offset;
-
     if (loop_index >= parser->loop_count) {
         error_at_previous(parser, "Invalid loop offset.");
         return NULL;
     }
     
     loop_t* const loop = parser->loops + loop_index;
-
     assert(parser->scope_depth >= loop->scope_depth_at_start);
-
     return loop;
 }
 
@@ -883,7 +870,6 @@ static void var_declaration(parser_t* parser, bool is_const) {
         emit_define_global(parser, global_id);
     }
 }
-
 
 
 
@@ -1176,19 +1162,19 @@ static void block(parser_t* parser) {
 }
 
 static size_t parse_loop_offset(parser_t* parser) {
-
     if (match(parser, TOKEN_NUMBER)) {
-        const double loop_number_ = strtod(parser->previous.start, NULL);
-        const long loop_number = strtol(parser->previous.start, NULL, 10);
+        char* endptr = NULL;
+        const long loop_offset = strtol(parser->previous.start, &endptr, 10);
+        const char * const expected_endptr = parser->previous.start + parser->previous.length;
 
-        if ((long)loop_number_ != loop_number) {
+        if (endptr != expected_endptr) {
             error_at_previous(parser, "Loop offset must be an integer.");
         }
-        if (loop_number < 1) {
+        if (loop_offset < 1) {
             error_at_previous(parser, "Loop offset must be positive.");
         }
 
-        return (size_t)loop_number;
+        return (size_t)loop_offset;
     }
 
     return 1; // target the closest loop by default
@@ -1207,8 +1193,8 @@ static void break_statement(parser_t* parser) {
     }
 
     const size_t target_loop_offset = parse_loop_offset(parser);
-    consume(parser, TOKEN_SEMICOLON, "Expect ';' after 'break'.");
     loop_t* const target_loop = resolve_loop(parser, target_loop_offset);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after 'break'.");
     if (!target_loop) return;
 
     // we might be jumping to a different scope-depth.
@@ -1231,8 +1217,8 @@ static void continue_statement(parser_t* parser) {
     }
 
     const size_t target_loop_offset = parse_loop_offset(parser);
-    consume(parser, TOKEN_SEMICOLON, "Expect ';' after 'continue'.");
     loop_t* const target_loop = resolve_loop(parser, target_loop_offset);
+    consume(parser, TOKEN_SEMICOLON, "Expect ';' after 'continue'.");
     if (!target_loop) return;
 
     // we might be jumping to a different scope-depth.
@@ -1246,7 +1232,6 @@ static void continue_statement(parser_t* parser) {
     assert(target_loop->continue_addr != SIZE_MAX);
     emit_jump_to(parser, OP_JUMP, target_loop->continue_addr);
 }
-
 
 
 
