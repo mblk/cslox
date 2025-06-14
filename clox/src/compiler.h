@@ -2,8 +2,8 @@
 #define _clox_compiler_h_
 
 typedef struct object_root object_root_t;
-typedef struct chunk chunk_t;
+typedef struct function_object function_object_t;
 
-bool compile(object_root_t* root, chunk_t* chunk, const char* source);
+function_object_t* compile(object_root_t* root, const char* source);
 
 #endif

@@ -3,11 +3,13 @@
 
 #include "value.h"
 #include "table.h"
+#include "chunk.h"
 
 #include <stdint.h>
 
 typedef enum {
     OBJECT_TYPE_STRING,
+    OBJECT_TYPE_FUNCTION,
 } object_type_t;
 
 typedef struct object {
@@ -27,6 +29,13 @@ typedef struct string_object {
     char chars[]; // "Flexible array member"
 } string_object_t;
 
+typedef struct function_object {
+    object_t object;
+    string_object_t* name;
+    size_t arity;
+    chunk_t chunk;
+} function_object_t;
+
 // struct inheritance:
 // object_t:            [type]
 // string_object_t:     [type] [length] [chars...]
@@ -36,10 +45,12 @@ typedef struct string_object {
 
 // type checking
 #define IS_STRING(value)        is_object_type(value, OBJECT_TYPE_STRING)
+#define IS_FUNCTION(value)      is_object_type(value, OBJECT_TYPE_FUNCTION)
 
 // value to c-type
 #define AS_STRING(value)        ((string_object_t*)AS_OBJECT(value))
 #define AS_C_STRING(value)      (((string_object_t*)AS_OBJECT(value))->chars)
+#define AS_FUNCTION(value)      ((function_object_t*)AS_OBJECT(value))
 
 // Function instead of macro to prevent double-evaluation
 [[maybe_unused]]
@@ -52,10 +63,12 @@ void object_root_free(object_root_t* root);
 void object_root_dump(object_root_t* root, const char* name);
 
 const string_object_t* create_string_object(object_root_t* root, const char* chars, size_t length);
+function_object_t* create_function_object(object_root_t* root);
 
+uint32_t hash_object(value_t value);
 bool objects_equal(value_t a, value_t b);
+
 void print_object(value_t value);
 void print_object_to_buffer(char* buffer, size_t max_length, value_t value);
-uint32_t hash_object(value_t value);
 
 #endif

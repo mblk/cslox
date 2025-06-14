@@ -3,6 +3,7 @@
 #include "table.h"
 #include "value.h"
 #include "hash.h"
+#include "chunk.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -52,7 +53,8 @@ void object_root_dump(object_root_t* root, const char* name) {
 
 static object_t* create_object(object_root_t* root, size_t size, object_type_t type) {
     assert(root);
-    assert(type == OBJECT_TYPE_STRING);
+    assert(type == OBJECT_TYPE_STRING ||
+           type == OBJECT_TYPE_FUNCTION);
 
     object_t* obj = ALLOC_BY_SIZE(object_t, size);
     assert(obj);
@@ -68,6 +70,7 @@ static object_t* create_object(object_root_t* root, size_t size, object_type_t t
 }
 
 const string_object_t* create_string_object(object_root_t* root, const char* chars, size_t length) {
+    assert(root);
     assert(chars);
     // length=0 is legal (empty strings)
 
@@ -95,6 +98,19 @@ const string_object_t* create_string_object(object_root_t* root, const char* cha
     }
 }
 
+function_object_t* create_function_object(object_root_t* root) {
+    assert(root);
+    
+    function_object_t* obj = (function_object_t*)create_object(root, sizeof(function_object_t), OBJECT_TYPE_FUNCTION);
+    assert(obj);
+
+    obj->name = NULL;
+    obj->arity = 0;
+    chunk_init(&obj->chunk);
+
+    return obj;
+}
+
 static void free_object(object_t* obj) {
     assert(obj);
 
@@ -105,9 +121,42 @@ static void free_object(object_t* obj) {
             break;
         }
 
+        case OBJECT_TYPE_FUNCTION: {
+            function_object_t* function = (function_object_t*)obj;
+            chunk_free(&function->chunk);
+            if (function->name) {
+                free_object((object_t*)function->name);
+            }
+            FREE_BY_COUNT(function_object_t, function, 1);
+            break;
+        }
+
         default:
             assert(!"Missing case in free_object");
             break;
+    }
+}
+
+uint32_t hash_object(value_t value) {
+    assert(IS_OBJECT(value));
+
+    switch (OBJECT_TYPE(value)) {
+        case OBJECT_TYPE_STRING: {
+            const string_object_t* const string = AS_STRING(value);
+            return string->hash;
+        }
+
+        case OBJECT_TYPE_FUNCTION: {
+            const function_object_t* const function = AS_FUNCTION(value);
+            return function->name->hash;
+        }
+
+        // TODO for later:
+        // maybe use GetHashCode()/Equals() approach from .NET so any user-defined object can be used as key in a hashmap?
+
+        default:
+            assert(!"Missing case in hash_object");
+            return 0;
     }
 }
 
@@ -115,9 +164,17 @@ bool objects_equal(value_t a, value_t b) {
     assert(IS_OBJECT(a));
     assert(IS_OBJECT(b));
 
+    if (IS_OBJECT(a) && IS_OBJECT(b)) {
+        const object_t* const object_a = AS_OBJECT(a);
+        const object_t* const object_b = AS_OBJECT(b);
+    
+        return object_a == object_b;
+    }
+    
+    #if 0
     if (IS_STRING(a) && IS_STRING(b)) {
-        const string_object_t* string_a = AS_STRING(a);
-        const string_object_t* string_b = AS_STRING(b);
+        const string_object_t* const string_a = AS_STRING(a);
+        const string_object_t* const string_b = AS_STRING(b);
 
         return string_a == string_b; // Note: Comparing by address. This is possible due to string-interning.
 
@@ -127,6 +184,14 @@ bool objects_equal(value_t a, value_t b) {
         //     return true;
         // }
     }
+
+    if (IS_FUNCTION(a) && IS_FUNCTION(b)) {
+        const function_object_t* const function_a = AS_FUNCTION(a);
+        const function_object_t* const function_b = AS_FUNCTION(b);
+
+        return function_a == function_b;
+    }
+    #endif
 
     return false;
 }
@@ -139,6 +204,16 @@ void print_object(value_t value) {
             //const string_object_t* string = AS_STRING(value);
             printf("%s", AS_C_STRING(value));
             //printf(" hash=%u", string->hash);
+            break;
+        }
+
+        case OBJECT_TYPE_FUNCTION: {
+            const function_object_t* const function = AS_FUNCTION(value);
+            if (function->name) {
+                printf("<fn %s>", function->name->chars);
+            } else {
+                printf("<script>");
+            }
             break;
         }
 
@@ -159,27 +234,19 @@ void print_object_to_buffer(char* buffer, size_t max_length, value_t value) {
             break;
         }
 
+        case OBJECT_TYPE_FUNCTION: {
+            const function_object_t* const function = AS_FUNCTION(value);
+            if (function->name) {
+                snprintf(buffer, max_length, "<fn %s>", function->name->chars);
+            } else {
+                snprintf(buffer, max_length, "<script>");
+            }
+            break;
+        }
+
         default:
             assert(!"Missing case in print_object_to_buffer");
             snprintf(buffer, max_length, "???");
             break;
-    }
-}
-
-uint32_t hash_object(value_t value) {
-    assert(IS_OBJECT(value));
-
-    switch (OBJECT_TYPE(value)) {
-        case OBJECT_TYPE_STRING: {
-            const string_object_t* string = AS_STRING(value);
-            return string->hash;
-        }
-
-        // TODO for later:
-        // maybe use GetHashCode()/Equals() approach from .NET so any user-defined object can be used as key in a hashmap?
-
-        default:
-            assert(!"Missing case in hash_object");
-            return 0;
     }
 }

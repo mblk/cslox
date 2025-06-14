@@ -15,7 +15,7 @@
 
 //#define VM_TRACE_EXECUTION
 
-#define VM_PRINT_CODE
+
 
 typedef struct vm {
     const chunk_t* chunk;
@@ -77,23 +77,18 @@ static void runtime_error(vm_t* vm, const char* format, ...) {
 }
 
 run_result_t vm_run_source(vm_t* vm, const char* source) {
-    run_result_t result = RUN_OK;
-
-    chunk_t chunk;
-    chunk_init(&chunk);
-    {
-        if (compile(&vm->root, &chunk, source)) {
-
-            #ifdef VM_PRINT_CODE
-                disassemble_chunk(&chunk, "Code");
-            #endif
-
-            result = vm_run_chunk(vm, &chunk);
-        } else {
-            result = RUN_COMPILE_ERROR;
-        }
+    // compile source to function-object
+    function_object_t* const function = compile(&vm->root, source);
+    if (!function) {
+        return RUN_COMPILE_ERROR;
     }
-    chunk_free(&chunk);
+
+    // Set function-object as local 0
+    vm_stack_push(vm, OBJECT_VALUE((object_t*)function));
+    
+    const run_result_t result = vm_run_chunk(vm, &function->chunk);
+
+    vm_stack_pop(vm);
 
     return result;
 }
@@ -176,6 +171,8 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     assert(chunk);
     assert(chunk->code);
     assert(chunk->count > 0);
+
+    void* const sp_at_start = vm->sp;
 
     vm->chunk = chunk;
     vm->ip = chunk->code;
@@ -396,7 +393,7 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
             case OP_POP: POP(); break;
 
             case OP_RETURN: {
-                assert(vm->sp == vm->stack); // make sure nothing is left on the stack - change later
+                assert(vm->sp == sp_at_start); // make sure the stack is in the correct state
                 RETURN(RUN_OK);
             }
 

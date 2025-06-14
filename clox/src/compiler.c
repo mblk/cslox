@@ -3,6 +3,7 @@
 #include "scanner.h"
 #include "value.h"
 #include "object.h"
+#include "debug.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -36,7 +37,31 @@ typedef struct {
     int scope_depth_at_start;
 } loop_t;
 
+typedef enum {
+    TYPE_SCRIPT, // Top-level code exists in implicit function.
+    TYPE_FUNCTION,
+} function_type_t;
+
 typedef struct {
+    // compilation target
+    function_object_t* function;
+    function_type_t function_type;
+    
+    // scoping
+    int scope_depth;
+
+    // locals
+    local_t locals[COMPILER_MAX_LOCALS];
+    int local_count;
+    
+    // for break/continue
+    loop_t loops[COMPILER_MAX_LOOPS];
+    size_t loop_count;
+
+} compiler_t;
+
+typedef struct {
+    // parsing state
     scanner_t scanner;
 
     token_t current;
@@ -45,21 +70,10 @@ typedef struct {
     bool had_error;
     bool panic_mode;
 
+    // output
     object_root_t* root;
 
-    chunk_t* current_chunk;
-
-    // ----
-    // compiler_t:
-
-    local_t locals[COMPILER_MAX_LOCALS];
-    int local_count;
-
-    int scope_depth;
-
-    // for break/continue
-    loop_t loops[COMPILER_MAX_LOOPS];
-    size_t loop_count;
+    compiler_t* current_compiler;
 
 } parser_t;
 
@@ -160,7 +174,11 @@ static const parse_rule_t g_rules[] = {
 
 static void advance(parser_t* parser);
 
-static void parser_init(parser_t* parser, object_root_t* root, chunk_t* chunk, const char* source) {
+static void parser_init(parser_t* parser, object_root_t* root, const char* source) {
+    assert(parser);
+    assert(root);
+    assert(source);
+
     memset(parser, 0, sizeof(parser_t));
 
     scanner_init(&parser->scanner, source);
@@ -169,13 +187,53 @@ static void parser_init(parser_t* parser, object_root_t* root, chunk_t* chunk, c
     parser->panic_mode = false;
 
     parser->root = root;
-    parser->current_chunk = chunk;
-
-    parser->local_count = 0;
-    parser->scope_depth = 0;
 
     // prime the parser
     advance(parser);
+}
+
+static void compiler_init(compiler_t* compiler, object_root_t* root, function_type_t type) {
+    assert(compiler);
+    assert(root);
+
+    memset(compiler, 0, sizeof(compiler_t));
+
+    compiler->function = NULL;
+    compiler->function_type = type;
+
+    compiler->scope_depth = 0;
+    compiler->local_count = 0;
+    compiler->loop_count = 0;
+
+    // always reserve local 0 for the function-object
+    {
+        compiler->local_count++;
+
+        local_t *const local = compiler->locals;
+
+        local->depth = 0;
+        local->is_const = true;
+        local->name = (token_t) { .type = TOKEN_NONE, .start = "", .length = 0, .line = 0 };
+    }
+}
+
+//
+// ...
+//
+
+inline static compiler_t* get_compiler(parser_t* parser) {
+    assert(parser);
+    assert(parser->current_compiler);
+
+    return parser->current_compiler;
+}
+
+inline static chunk_t* get_chunk(parser_t* parser) {
+    assert(parser);
+    assert(parser->current_compiler);
+    assert(parser->current_compiler->function);
+
+    return &parser->current_compiler->function->chunk;
 }
 
 //
@@ -250,7 +308,7 @@ static bool match(parser_t* parser, token_type_t type) {
 //
 
 static void emit_byte(parser_t* parser, uint8_t byte) {
-    chunk_write8(parser->current_chunk, byte, parser->previous.line);
+    chunk_write8(get_chunk(parser), byte, parser->previous.line);
 }
 
 static void emit_bytes(parser_t* parser, uint8_t byte1, uint8_t byte2) {
@@ -259,7 +317,7 @@ static void emit_bytes(parser_t* parser, uint8_t byte1, uint8_t byte2) {
 }
 
 static void emit_long(parser_t* parser, uint32_t value) {
-    chunk_write32(parser->current_chunk, value, parser->previous.line);
+    chunk_write32(get_chunk(parser), value, parser->previous.line);
 }
 
 static void emit_byte_and_long(parser_t* parser, uint8_t value1, uint32_t value2) {
@@ -273,7 +331,7 @@ static void emit_return(parser_t* parser) {
 
 // add to value table and load onto stack.
 static void emit_const(parser_t* parser, value_t value) {
-    const uint32_t index = chunk_add_value(parser->current_chunk, value);
+    const uint32_t index = chunk_add_value(get_chunk(parser), value);
 
     if (index < 256) {
         emit_bytes(parser, OP_CONST, (uint8_t)index);
@@ -286,7 +344,7 @@ static void emit_const(parser_t* parser, value_t value) {
 static uint32_t emit_string_value(parser_t* parser, const token_t* name) {
     const string_object_t* obj = create_string_object(parser->root, name->start, name->length);
     const value_t value = OBJECT_VALUE((object_t*)obj);
-    const size_t index = chunk_add_value(parser->current_chunk, value);
+    const size_t index = chunk_add_value(get_chunk(parser), value);
 
     return index;
 }
@@ -332,7 +390,9 @@ static void emit_set_local(parser_t* parser, uint32_t stack_index) {
 }
 
 static void emit_jump_to(parser_t* parser, uint8_t opcode, size_t to_addr) {
-    const size_t from_addr = parser->current_chunk->count;
+    chunk_t* const chunk = get_chunk(parser);
+
+    const size_t from_addr = chunk->count;
     const int diff = to_addr - from_addr - 3;
     if (diff < INT16_MIN || diff > INT16_MAX) {
         error_at_previous(parser, "Can't jump this far.");
@@ -344,12 +404,12 @@ static void emit_jump_to(parser_t* parser, uint8_t opcode, size_t to_addr) {
     emit_byte(parser, 0); // byte1 of offset
     emit_byte(parser, 0); // byte2 of offset
 
-    uint8_t* const code = parser->current_chunk->code;
+    uint8_t* const code = chunk->code;
     memcpy(code + from_addr + 1, &diff16, sizeof(int16_t));
 }
 
 static size_t emit_jump_from(parser_t* parser, uint8_t opcode) {
-    const size_t addr = parser->current_chunk->count;
+    const size_t addr = get_chunk(parser)->count;
 
     emit_byte(parser, opcode);
     emit_byte(parser, 0); // byte1 of offset
@@ -359,8 +419,9 @@ static size_t emit_jump_from(parser_t* parser, uint8_t opcode) {
 }
 
 static void patch_jump_from(parser_t* parser, size_t from_addr) {
-    // jump from 'from_addr' to current address
-    const size_t to_addr = parser->current_chunk->count;
+    chunk_t* const chunk = get_chunk(parser);
+    
+    const size_t to_addr = chunk->count;
     const int diff = to_addr - from_addr - 3;
     if (diff < INT16_MIN || diff > INT16_MAX) {
         error_at_previous(parser, "Can't jump this far.");
@@ -368,7 +429,7 @@ static void patch_jump_from(parser_t* parser, size_t from_addr) {
     }
     const int16_t diff16 = (int16_t)diff;
 
-    uint8_t* const code = parser->current_chunk->code;
+    uint8_t* const code = chunk->code;
     memcpy(code + from_addr + 1, &diff16, sizeof(int16_t));
 }
 
@@ -447,18 +508,18 @@ static void parse_precendence(parser_t* parser, precedence_t prec) {
 // ...
 //
 
-static const token_t g_hidden_local_name = { TOKEN_NONE, "hidden", 6, 0 };
-
 static size_t add_local(parser_t* parser, token_t name, bool is_const) {
-    assert(parser->scope_depth > 0);
+    compiler_t* const compiler = get_compiler(parser);
 
-    if (parser->local_count >= COMPILER_MAX_LOCALS) {
+    assert(compiler->scope_depth > 0);
+
+    if (compiler->local_count >= COMPILER_MAX_LOCALS) {
         error_at_previous(parser, "Too many locals variables in function.");
         return 0;
     }
 
-    size_t index = parser->local_count++;
-    local_t* local = parser->locals + index;
+    const size_t index = compiler->local_count++;
+    local_t* const local = compiler->locals + index;
 
     local->name = name;
     local->is_const = is_const;
@@ -467,18 +528,27 @@ static size_t add_local(parser_t* parser, token_t name, bool is_const) {
     return index;
 }
 
-static void mark_initialized(parser_t* parser) {
-    assert(parser->local_count > 0);
+static size_t add_hidden_local(parser_t* parser) {
+    const token_t name = (token_t) { .type = TOKEN_NONE, .start = "", .length = 0, .line = 0  };
+    return add_local(parser, name, true);
+}
 
-    local_t *const top_local = parser->locals + parser->local_count - 1;
+static void mark_initialized(parser_t* parser) {
+    compiler_t* const compiler = get_compiler(parser);
+
+    assert(compiler->local_count > 0);
+
+    local_t *const top_local = compiler->locals + compiler->local_count - 1;
     assert(top_local->depth == -1);
 
-    top_local->depth = parser->scope_depth;
+    top_local->depth = compiler->scope_depth;
 }
 
 static int resolve_local(parser_t* parser, const token_t* name, bool* is_const_out) {
-    for (int i = parser->local_count-1; i >= 0; i--) {
-        const local_t* local = parser->locals + i;
+    compiler_t* const compiler = get_compiler(parser);
+
+    for (int i = compiler->local_count-1; i >= 0; i--) {
+        const local_t* local = compiler->locals + i;
 
         if (identifiers_equal(name, &local->name)) {
             if (local->depth == -1) {
@@ -493,7 +563,9 @@ static int resolve_local(parser_t* parser, const token_t* name, bool* is_const_o
 }
 
 static void declare_variable(parser_t* parser, bool is_const) {
-    if (parser->scope_depth == 0) {
+    compiler_t* const compiler = get_compiler(parser);
+
+    if (compiler->scope_depth == 0) {
         // global variables are implicitly declared
         return;
     }
@@ -501,10 +573,10 @@ static void declare_variable(parser_t* parser, bool is_const) {
     const token_t name = parser->previous;
 
     // check if local with same name exists in same scope
-    for (int i = parser->local_count-1; i >= 0; i--) {
-        const local_t* local = parser->locals + i;
+    for (int i = compiler->local_count-1; i >= 0; i--) {
+        const local_t* local = compiler->locals + i;
 
-        if (local->depth != -1 && local->depth < parser->scope_depth) {
+        if (local->depth != -1 && local->depth < compiler->scope_depth) {
             // found local of outer scope, no need to continue looking.
             break;
         }
@@ -518,11 +590,13 @@ static void declare_variable(parser_t* parser, bool is_const) {
 }
 
 static size_t parse_variable_name(parser_t* parser, bool is_const, const char* error_message) {
+    compiler_t* const compiler = get_compiler(parser);
+
     consume(parser, TOKEN_IDENTIFIER, error_message);
 
     declare_variable(parser, is_const);
 
-    if (parser->scope_depth > 0) {
+    if (compiler->scope_depth > 0) {
         // don't put the variable name in the value-table if it is a local variable.
         return 0;
     }
@@ -747,37 +821,43 @@ static void synchronize(parser_t* parser) {
 //
 
 static void begin_scope(parser_t* parser) {
-    parser->scope_depth++;
+    compiler_t* const compiler = get_compiler(parser);
+
+    compiler->scope_depth++;
 }
 
 static void end_scope(parser_t* parser) {
-    assert(parser->scope_depth > 0);
-    parser->scope_depth--;
+    compiler_t* const compiler = get_compiler(parser);
+
+    assert(compiler->scope_depth > 0);
+    compiler->scope_depth--;
 
     // pop all locals which are no longer in scope
-    while (parser->local_count) {
-        const local_t* top_local = parser->locals + parser->local_count - 1;
+    while (compiler->local_count) {
+        const local_t* top_local = compiler->locals + compiler->local_count - 1;
 
-        if (top_local->depth <= parser->scope_depth) {
+        if (top_local->depth <= compiler->scope_depth) {
             // must stay on the stack
             break;
         }
 
         emit_byte(parser, OP_POP);
-        parser->local_count--;
+        compiler->local_count--;
     }
 }
 
 static void simulate_end_scope(parser_t* parser, size_t count) {
-    assert(parser->scope_depth > 0);
+    compiler_t* const compiler = get_compiler(parser);
+
+    assert(compiler->scope_depth > 0);
     assert(count > 0);
 
-    int scope_depth = parser->scope_depth - count;
-    size_t local_count = parser->local_count;
+    int scope_depth = compiler->scope_depth - count;
+    size_t local_count = compiler->local_count;
 
     // pop all locals which are no longer in scope
     while (local_count) {
-        const local_t* top_local = parser->locals + local_count - 1;
+        const local_t* top_local = compiler->locals + local_count - 1;
 
         if (top_local->depth <= scope_depth) {
             // must stay on the stack
@@ -790,41 +870,47 @@ static void simulate_end_scope(parser_t* parser, size_t count) {
 }
 
 static loop_t* begin_loop(parser_t* parser) {
-    assert(parser->loop_count < COMPILER_MAX_LOOPS);
+    compiler_t* const compiler = get_compiler(parser);
 
-    loop_t* const loop = parser->loops + parser->loop_count++;
+    assert(compiler->loop_count < COMPILER_MAX_LOOPS);
 
-    loop->continue_addr = parser->current_chunk->count; // default start - different for some loops
+    loop_t* const loop = compiler->loops + compiler->loop_count++;
+
+    loop->continue_addr = get_chunk(parser)->count; // default start - different for some loops
     loop->break_jump_count = 0;
-    loop->scope_depth_at_start = parser->scope_depth;
+    loop->scope_depth_at_start = compiler->scope_depth;
 
     return loop;
 }
 
 static void end_loop(parser_t* parser) {
-    assert(parser->loop_count > 0);
+    compiler_t* const compiler = get_compiler(parser);
 
-    loop_t* const loop = parser->loops + parser->loop_count - 1;
+    assert(compiler->loop_count > 0);
+
+    loop_t* const loop = compiler->loops + compiler->loop_count - 1;
 
     // patch jumps from break statements
     for (size_t i=0; i<loop->break_jump_count; i++) {
         patch_jump_from(parser, loop->break_jumps[i]);
     }
 
-    parser->loop_count--;
+    compiler->loop_count--;
 }
 
 static loop_t* resolve_loop(parser_t* parser, size_t loop_offset) {
-    assert(parser->loop_count > 0);
+    compiler_t* const compiler = get_compiler(parser);
 
-    const size_t loop_index = parser->loop_count - loop_offset;
-    if (loop_index >= parser->loop_count) {
+    assert(compiler->loop_count > 0);
+
+    const size_t loop_index = compiler->loop_count - loop_offset;
+    if (loop_index >= compiler->loop_count) {
         error_at_previous(parser, "Invalid loop offset.");
         return NULL;
     }
     
-    loop_t* const loop = parser->loops + loop_index;
-    assert(parser->scope_depth >= loop->scope_depth_at_start);
+    loop_t* const loop = compiler->loops + loop_index;
+    assert(compiler->scope_depth >= loop->scope_depth_at_start);
     return loop;
 }
 
@@ -842,11 +928,13 @@ static void expression(parser_t* parser) {
 
 
 static void var_declaration(parser_t* parser, bool is_const) {
+    compiler_t* const compiler = get_compiler(parser);
+
     // var a = b;
     // var a;
     // "var" already consumed
 
-    if (parser->previous.type == TOKEN_CONST && parser->scope_depth == 0) {
+    if (parser->previous.type == TOKEN_CONST && compiler->scope_depth == 0) {
         error_at_current(parser, "Const variables are not supported at global scope.");
     }
 
@@ -860,7 +948,7 @@ static void var_declaration(parser_t* parser, bool is_const) {
 
     consume(parser, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
-    if (parser->scope_depth > 0) {
+    if (compiler->scope_depth > 0) {
         // local variable, value is just left on the stack
 
         // left as 'declared but not initialized' in parse_variable_name().
@@ -920,9 +1008,10 @@ static void while_statement(parser_t* parser) {
     // while (expression) statement
 
     begin_loop(parser);
+    chunk_t *chunk = get_chunk(parser);
 
     // check condition
-    const size_t start_addr = parser->current_chunk->count;
+    const size_t start_addr = chunk->count;
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
     expression(parser);
     consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
@@ -956,8 +1045,8 @@ static void for_statement(parser_t* parser) {
     // - expression
 
     begin_scope(parser);
-
     loop_t* loop = begin_loop(parser);
+    chunk_t *chunk = get_chunk(parser);
 
     // initializer
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
@@ -971,7 +1060,7 @@ static void for_statement(parser_t* parser) {
     }
 
     // condition
-    size_t loop_start = parser->current_chunk->count;
+    size_t loop_start = chunk->count;
     size_t jump_to_end = SIZE_MAX;
     if (match(parser, TOKEN_SEMICOLON)) {
         // emtpy
@@ -991,7 +1080,7 @@ static void for_statement(parser_t* parser) {
         // must execute body before increment expression
         const size_t jump_over_increment = emit_jump_from(parser, OP_JUMP);
 
-        const size_t increment_addr = parser->current_chunk->count;
+        const size_t increment_addr = chunk->count;
         expression(parser);
         emit_byte(parser, OP_POP); // discard result
         consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
@@ -1069,9 +1158,9 @@ static void switch_statement(parser_t* parser) {
 
     // parse switch-value and store it as a local variable.
     consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'switch'.");
-
     expression(parser);
-    const size_t local_index = add_local(parser, g_hidden_local_name, true);
+
+    const size_t local_index = add_hidden_local(parser);
     mark_initialized(parser);
 
     consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after switch expression.");
@@ -1182,13 +1271,15 @@ static size_t parse_loop_offset(parser_t* parser) {
 
 static void break_statement(parser_t* parser) {
     // 'break' already consumed
-
+    
     // break;
     // break 1;
     // break 2;
     // ...
+
+    compiler_t* const compiler = get_compiler(parser);
     
-    if (parser->loop_count == 0) {
+    if (compiler->loop_count == 0) {
         error_at_previous(parser, "Can't use 'break' outside loops.");
     }
 
@@ -1199,8 +1290,8 @@ static void break_statement(parser_t* parser) {
 
     // we might be jumping to a different scope-depth.
     // pop all the locals that need to go.
-    if (parser->scope_depth > target_loop->scope_depth_at_start) {
-        const size_t scopes_to_drop = parser->scope_depth - target_loop->scope_depth_at_start;
+    if (compiler->scope_depth > target_loop->scope_depth_at_start) {
+        const size_t scopes_to_drop = compiler->scope_depth - target_loop->scope_depth_at_start;
         simulate_end_scope(parser, scopes_to_drop);
     }
 
@@ -1212,7 +1303,9 @@ static void break_statement(parser_t* parser) {
 static void continue_statement(parser_t* parser) {
     // 'continue' already consumed
     
-    if (parser->loop_count == 0) {
+    compiler_t* const compiler = get_compiler(parser);
+    
+    if (compiler->loop_count == 0) {
         error_at_previous(parser, "Can't use 'continue' outside loops.");
     }
 
@@ -1223,8 +1316,8 @@ static void continue_statement(parser_t* parser) {
 
     // we might be jumping to a different scope-depth.
     // pop all the locals that need to go.
-    if (parser->scope_depth > target_loop->scope_depth_at_start) {
-        const size_t scopes_to_drop = parser->scope_depth - target_loop->scope_depth_at_start;
+    if (compiler->scope_depth > target_loop->scope_depth_at_start) {
+        const size_t scopes_to_drop = compiler->scope_depth - target_loop->scope_depth_at_start;
         simulate_end_scope(parser, scopes_to_drop);
     }
 
@@ -1277,9 +1370,8 @@ static void declaration(parser_t *parser) {
 // ...
 //
 
-bool compile(object_root_t* root, chunk_t* chunk, const char* source) {
+function_object_t* compile(object_root_t* root, const char* source) {
     assert(root);
-    assert(chunk);
     assert(source);
 
     //printf("compile: START %s END\n", source);
@@ -1299,8 +1391,18 @@ bool compile(object_root_t* root, chunk_t* chunk, const char* source) {
     }
     //xxx
     
+    function_object_t* const function = create_function_object(root);
+    assert(function);
+
+    compiler_t compiler;
+    compiler_init(&compiler, root, TYPE_SCRIPT);
+    compiler.function = function;
+
     parser_t parser;
-    parser_init(&parser, root, chunk, source);
+    parser_init(&parser, root, source);
+    parser.current_compiler = &compiler;
+
+
 
     if (false) {
         // Expression parser:
@@ -1315,5 +1417,10 @@ bool compile(object_root_t* root, chunk_t* chunk, const char* source) {
         emit_return(&parser);
     }
 
-    return !parser.had_error;
+    //#ifdef VM_PRINT_CODE
+    disassemble_chunk(&function->chunk, "Code");
+    //#endif
+
+    //return !parser.had_error;
+    return !parser.had_error ? function : NULL;
 }
