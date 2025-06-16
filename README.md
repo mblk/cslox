@@ -54,7 +54,8 @@ This repository contains my implementation of the [lox language] following the b
     - [x] break/continue for loops
     - [x] Functions and calls
     - [ ] Anonymous functions
-    - [ ] Native functions
+    - [x] Native functions
+    - [ ] Closures and upvalues
     - [ ] ...
 
 ## Building / Running
