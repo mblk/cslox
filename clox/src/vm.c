@@ -12,8 +12,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
-#define VM_TRACE_EXECUTION
+// #define VM_TRACE_EXECUTION
 
 #define VM_FRAMES_MAX   256
 
@@ -44,6 +45,127 @@ typedef struct vm {
 
 
 
+// for native_assert()
+// TODO make a utility function to print current execution-location
+static call_frame_t* get_current_frame(vm_t* vm);
+static const chunk_t* get_current_chunk(vm_t* vm);
+
+
+
+static void register_native(vm_t* vm, const char* name, native_fn_t fn) {
+    assert(vm);
+    assert(name);
+    assert(fn);
+
+    size_t name_len = strlen(name);
+    assert(name_len);
+
+    // Note: stored on stack to prevent cleanup by GC.
+    vm_stack_push(vm, OBJECT_VALUE((object_t*)create_string_object(&vm->root, name, name_len)));
+    vm_stack_push(vm, OBJECT_VALUE((object_t*)create_native_object(&vm->root, fn)));
+
+    assert(IS_STRING(vm->sp[-2]));
+    assert(IS_NATIVE(vm->sp[-1]));
+
+    const bool r = table_set(&vm->globals, vm->sp[-2], vm->sp[-1]);
+    (void)r;
+    assert(r);
+
+    vm_stack_pop(vm);
+    vm_stack_pop(vm);
+}
+
+static value_t native_clock(void* context, size_t arg_count, const value_t* args) {
+    (void)context;
+    (void)arg_count;
+    (void)args;
+    const double t = (double)clock() / CLOCKS_PER_SEC;
+    return NUMBER_VALUE(t);
+}
+
+static value_t native_dump(void* context, size_t arg_count, const value_t* args) {
+    (void)context;
+
+    printf("native_dump(%zu args):\n", arg_count);
+    for(size_t i=0; i<arg_count; i++) {
+        printf("arg[%zu] = ", i);
+        print_value(args[i]);
+        printf("\n");
+    }
+
+    return NIL_VALUE();
+}
+
+static value_t native_print(void* context, size_t arg_count, const value_t* args) {
+    (void)context;
+
+    // TODO implement format strings etc
+    
+    for(size_t i=0; i<arg_count; i++) {
+        print_value(args[i]);
+    }
+    printf("\n");
+
+    return NIL_VALUE();
+}
+
+static value_t native_tostring(void* context, size_t arg_count, const value_t* args) {
+    assert(context);
+    vm_t* const vm = (vm_t*)context;
+
+    if (arg_count != 1) {
+        printf("Invalid arguments to native_tostring()\n");
+        return NIL_VALUE();
+    }
+
+    const value_t value = args[0];
+
+    char buffer[128];
+    print_value_to_buffer(buffer, sizeof(buffer), value);
+
+    return OBJECT_VALUE((object_t*)create_string_object(&vm->root, buffer, strlen(buffer)));
+}
+
+static value_t native_assert(void* context, size_t arg_count, const value_t* args) {
+    assert(context);
+    vm_t* const vm = (vm_t*)context;
+
+    if (arg_count != 1) {
+        printf("assert: Invalid argument count: %zu\n", arg_count);
+        exit(1);
+    }
+
+    const value_t value = args[0];
+    if (!IS_BOOL(value)) {
+        printf("assert: Invalid value type: ");
+        print_value(value);
+        printf("\n");
+        exit(1);
+    }
+
+    const bool bool_value = AS_BOOL(value);
+    if (!bool_value) {
+        printf("##\n");
+        printf("## assertion failed\n");
+        printf("##\n");
+        
+        const call_frame_t* frame = get_current_frame(vm);
+        const chunk_t* chunk = get_current_chunk(vm);
+        const size_t offset = (size_t)(frame->ip - chunk->code);
+        const uint32_t line = chunk_get_line_for_offset(chunk, offset);
+        
+        printf("at line %u\n", line);
+        // TODO somehow show exact expression which failed and print stack-trace
+
+        exit(1);
+    }
+
+    // all good
+    return NIL_VALUE();
+}
+
+
+
 vm_t* vm_create(void) {
     vm_t *vm = (vm_t*)malloc(sizeof(vm_t));
     assert(vm);
@@ -54,6 +176,12 @@ vm_t* vm_create(void) {
 
     object_root_init(&vm->root);
     table_init(&vm->globals);
+
+    register_native(vm, "clock", native_clock);
+    register_native(vm, "dump", native_dump);
+    register_native(vm, "printf", native_print); // TODO there is some kind of collision with the print-statement if it's just called "print"
+    register_native(vm, "tostring", native_tostring);
+    register_native(vm, "assert", native_assert);
 
     return vm;
 }
@@ -82,6 +210,7 @@ static call_frame_t* get_current_frame(vm_t* vm) {
     return vm->frames + vm->frame_count - 1;
 }
 
+[[maybe_unused]]
 static const chunk_t* get_current_chunk(vm_t* vm) {
     const call_frame_t* const frame = get_current_frame(vm);
 
@@ -251,6 +380,20 @@ static bool call(vm_t* vm, value_t callee, size_t arg_count) {
                 return true;
             }
 
+            case OBJECT_TYPE_NATIVE: {
+                const native_object_t* const native = AS_NATIVE(callee);
+
+                const value_t result = native->fn(vm, arg_count, vm->sp - arg_count);
+
+                // drop function-obj and args
+                vm->sp -= arg_count + 1;
+
+                // leave return value on stack
+                vm_stack_push(vm, result);
+
+                return true;
+            }
+
             default: {
                 break;
             }
@@ -262,7 +405,7 @@ static bool call(vm_t* vm, value_t callee, size_t arg_count) {
 }
 
 #ifndef NDEBUG
-static void vm_check_bounds(vm_t* vm, size_t bytes_to_read) {
+static void vm_check_ip_bounds(vm_t* vm, size_t bytes_to_read) {
     const call_frame_t* frame = get_current_frame(vm);
     const chunk_t* chunk = get_current_chunk(vm);
 
@@ -281,34 +424,51 @@ static void vm_check_bounds(vm_t* vm, size_t bytes_to_read) {
         assert(!"IP after chunk end");
     }
 }
+
+static void vm_check_sp_bounds(const vm_t* vm, const value_t* location) {
+    const value_t* const start = vm->stack;
+    const value_t* const end = vm->stack + VM_STACK_MAX;
+
+    if (location < start) {
+        printf("Error: Trying to read before stack start: start=%p end=%p location=%p\n",
+            (void*)start, (void*)end, (void*)location);
+        assert(!"Trying to read before stack start");
+    }
+
+    if (location >= end) {
+        printf("Error: Trying to read after stack end: start=%p end=%p location=%p\n",
+            (void*)start, (void*)end, (void*)location);
+        assert(!"Trying to read after stack end");
+    }
+}
 #endif
 
 static run_result_t vm_run(vm_t* vm) {
     assert(vm);
     assert(vm->frame_count > 0);
 
-    // store current frame in a local variable for faster access,
-    // must be manually updated.
+    // Note: storing pointer to current frame in a local variable for faster access, must be manually updated.
     call_frame_t* frame = vm->frames + vm->frame_count - 1;
 
     assert(frame->function);
     assert(frame->ip);
     assert(frame->base_pointer);
 
-    // cleanup before returning >>> TODO remove ?
-    #define RETURN(value) do { \
-        return value; \
-    } while (false)
-
     #define ERROR(args...) do { \
         runtime_error(vm, args); \
-        RETURN(RUN_RUNTIME_ERROR); \
+        return RUN_RUNTIME_ERROR; \
     } while (false)
 
     #ifndef NDEBUG
-    #define CHECK_IP_BOUNDS(read_size) vm_check_bounds(vm, read_size)
+    #define CHECK_IP_BOUNDS(read_size) vm_check_ip_bounds(vm, read_size)
     #else
     #define CHECK_IP_BOUNDS(read_size) ((void)0)
+    #endif
+
+    #ifndef NDEBUG
+    #define CHECK_SP_BOUNDS(loc) vm_check_sp_bounds(vm, loc)
+    #else
+    #define CHECK_SP_BOUNDS(loc) ((void)0)
     #endif
 
     // memcpy to prevent unaligned reads (works on x86 but is UB according to C).
@@ -327,7 +487,7 @@ static run_result_t vm_run(vm_t* vm) {
     #ifndef NDEBUG
     #define READ_BYTE()     READ_TYPE(uint8_t)
     #else
-    #define READ_BYTE()     (*(vm->ip++))
+    #define READ_BYTE()     (*(frame->ip++))
     #endif
 
     // returns value_t
@@ -468,7 +628,8 @@ static run_result_t vm_run(vm_t* vm) {
                 //     ERROR("Stack overflow while getting local at index %u", stack_index);
                 // }
 
-                //const value_t value = vm->stack[stack_index];
+                CHECK_SP_BOUNDS(frame->base_pointer + stack_index);
+
                 const value_t value = frame->base_pointer[stack_index];
                 PUSH(value);
                 break;
@@ -482,8 +643,9 @@ static run_result_t vm_run(vm_t* vm) {
                 //     ERROR("Stack overflow while setting local at index %u", stack_index);
                 // }
 
+                CHECK_SP_BOUNDS(frame->base_pointer + stack_index);
+
                 const value_t value = PEEK(0); // leave on stack
-                //vm->stack[stack_index] = value;
                 frame->base_pointer[stack_index] = value;
                 break;
             }
@@ -508,8 +670,6 @@ static run_result_t vm_run(vm_t* vm) {
                 break;
             }
 
-            case OP_DUP: PUSH(PEEK(0)); break; // TODO remove?
-
             case OP_POP: POP(); break;
 
             case OP_CALL: {
@@ -519,7 +679,7 @@ static run_result_t vm_run(vm_t* vm) {
                 const value_t callee = PEEK(arg_count);
 
                 if (!call(vm, callee, arg_count)) {
-                    RETURN(RUN_RUNTIME_ERROR);
+                    return RUN_RUNTIME_ERROR;
                 }
 
                 // refresh cached current frame
@@ -539,7 +699,7 @@ static run_result_t vm_run(vm_t* vm) {
                 // exit vm?
                 if (vm->frame_count == 0) {
                     POP(); // drop function-obj
-                    RETURN(RUN_OK);
+                    return RUN_OK;
                 }
 
                 // restore stack to the state before the call
@@ -570,7 +730,7 @@ static run_result_t vm_run(vm_t* vm) {
     }
 
     assert(!"Must not reach");
-    RETURN(RUN_RUNTIME_ERROR);
+    return RUN_RUNTIME_ERROR;
 
     #undef BINARY_NUMBER_OP
     #undef BINARY_FN_OP
@@ -585,7 +745,6 @@ static run_result_t vm_run(vm_t* vm) {
     #undef READ_BYTE
     #undef READ_TYPE
     #undef ERROR
-    #undef RETURN
 }
 
 void vm_stack_dump(const vm_t *vm) {

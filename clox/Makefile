@@ -29,7 +29,7 @@ endif
 SRC := $(wildcard src/*.c)
 OBJ := $(patsubst src/%.c,obj/%.o,$(SRC))
 
-LIBS =
+LIBS = -lm
 OUT = clox
 
 # Targets

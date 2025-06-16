@@ -10,6 +10,7 @@
 typedef enum {
     OBJECT_TYPE_STRING,
     OBJECT_TYPE_FUNCTION,
+    OBJECT_TYPE_NATIVE,
 } object_type_t;
 
 typedef struct object {
@@ -36,9 +37,19 @@ typedef struct function_object {
     chunk_t chunk;
 } function_object_t;
 
+typedef value_t (*native_fn_t)(void* context, size_t arg_count, const value_t* args);
+
+typedef struct native_object {
+    object_t object;
+    native_fn_t fn;
+} native_object_t;
+
 // struct inheritance:
-// object_t:            [type]
-// string_object_t:     [type] [length] [chars...]
+// object_t:            [type] [next]
+// string_object_t:     [type] [next] [hash] [length] [chars...]
+// function_object_t:   [type] [next] [name] [arity] [chunk]
+// native_object_t:     [type] [next] [fn]
+// ...
 
 // value to object
 #define OBJECT_TYPE(value)      (AS_OBJECT(value)->type)
@@ -46,11 +57,13 @@ typedef struct function_object {
 // type checking
 #define IS_STRING(value)        is_object_type(value, OBJECT_TYPE_STRING)
 #define IS_FUNCTION(value)      is_object_type(value, OBJECT_TYPE_FUNCTION)
+#define IS_NATIVE(value)        is_object_type(value, OBJECT_TYPE_NATIVE)
 
 // value to c-type
 #define AS_STRING(value)        ((string_object_t*)AS_OBJECT(value))
 #define AS_C_STRING(value)      (((string_object_t*)AS_OBJECT(value))->chars)
 #define AS_FUNCTION(value)      ((function_object_t*)AS_OBJECT(value))
+#define AS_NATIVE(value)        ((native_object_t*)AS_OBJECT(value))
 
 // Function instead of macro to prevent double-evaluation
 [[maybe_unused]]
@@ -64,6 +77,7 @@ void object_root_dump(object_root_t* root, const char* name);
 
 const string_object_t* create_string_object(object_root_t* root, const char* chars, size_t length);
 function_object_t* create_function_object(object_root_t* root);
+native_object_t* create_native_object(object_root_t* root, native_fn_t fn);
 
 uint32_t hash_object(value_t value);
 bool objects_equal(value_t a, value_t b);

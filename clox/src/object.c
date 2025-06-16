@@ -54,7 +54,8 @@ void object_root_dump(object_root_t* root, const char* name) {
 static object_t* create_object(object_root_t* root, size_t size, object_type_t type) {
     assert(root);
     assert(type == OBJECT_TYPE_STRING ||
-           type == OBJECT_TYPE_FUNCTION);
+           type == OBJECT_TYPE_FUNCTION ||
+           type == OBJECT_TYPE_NATIVE);
 
     object_t* obj = ALLOC_BY_SIZE(object_t, size);
     assert(obj);
@@ -111,6 +112,18 @@ function_object_t* create_function_object(object_root_t* root) {
     return obj;
 }
 
+native_object_t* create_native_object(object_root_t* root, native_fn_t fn) {
+    assert(root);
+    assert(fn);
+
+    native_object_t* obj = (native_object_t*)create_object(root, sizeof(native_object_t), OBJECT_TYPE_NATIVE);
+    assert(obj);
+
+    obj->fn = fn;
+
+    return obj;
+}
+
 static void free_object(object_t* obj) {
     assert(obj);
 
@@ -132,6 +145,12 @@ static void free_object(object_t* obj) {
             break;
         }
 
+        case OBJECT_TYPE_NATIVE: {
+            native_object_t* native = (native_object_t*)obj;
+            FREE_BY_COUNT(native_object_t, native, 1);
+            break;
+        }
+
         default:
             assert(!"Missing case in free_object");
             break;
@@ -150,6 +169,12 @@ uint32_t hash_object(value_t value) {
         case OBJECT_TYPE_FUNCTION: {
             const function_object_t* const function = AS_FUNCTION(value);
             return function->name->hash;
+        }
+
+        case OBJECT_TYPE_NATIVE: {
+            const native_object_t* const native = AS_NATIVE(value);
+            const uint64_t addr = (uint64_t)native->fn;
+            return (uint32_t)addr;
         }
 
         // TODO for later:
@@ -218,6 +243,11 @@ void print_object(value_t value) {
             break;
         }
 
+        case OBJECT_TYPE_NATIVE: {
+            printf("<native fn>");
+            break;
+        }
+
         default:
             assert(!"Missing case in print_object");
             break;
@@ -242,6 +272,11 @@ void print_object_to_buffer(char* buffer, size_t max_length, value_t value) {
             } else {
                 snprintf(buffer, max_length, "<script>");
             }
+            break;
+        }
+
+        case OBJECT_TYPE_NATIVE: {
+            snprintf(buffer, max_length, "<native fn>");
             break;
         }
 

@@ -3,9 +3,12 @@
 #include "object.h"
 #include "hash.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <inttypes.h> // for PRId64
+#include <math.h>
 
 void value_array_init(value_array_t* array) {
     assert(array);
@@ -70,6 +73,8 @@ uint32_t hash_value(value_t value) {
     }
 }
 
+
+
 void print_value(value_t value) {
     assert(value.type == VALUE_TYPE_NIL ||
            value.type == VALUE_TYPE_BOOL ||
@@ -80,15 +85,26 @@ void print_value(value_t value) {
         case VALUE_TYPE_NIL:
             printf("nil");
             break;
+
         case VALUE_TYPE_BOOL:
             printf("%s", AS_BOOL(value) ? "true" : "false");
             break;
-        case VALUE_TYPE_NUMBER:
-            printf("%g", AS_NUMBER(value));
+
+        case VALUE_TYPE_NUMBER: {
+            const double dbl_value = AS_NUMBER(value);
+            if (ceil(dbl_value) == floor(dbl_value)) {
+                const int64_t int64_value = (int64_t)dbl_value;
+                printf("%" PRId64, int64_value);
+            } else {
+                printf("%g", dbl_value);
+            }
             break;
+        }
+
         case VALUE_TYPE_OBJECT:
             print_object(value);
             break;
+
         default:
             assert(!"Missing case in print_value()");
             printf("???");
@@ -109,15 +125,26 @@ void print_value_to_buffer(char* buffer, size_t max_length, value_t value) {
         case VALUE_TYPE_NIL:
             snprintf(buffer, max_length, "nil");
             break;
+
         case VALUE_TYPE_BOOL:
             snprintf(buffer, max_length, "%s", AS_BOOL(value) ? "true" : "false");
             break;
-        case VALUE_TYPE_NUMBER:
-            snprintf(buffer, max_length, "%g", AS_NUMBER(value));
+
+        case VALUE_TYPE_NUMBER: {
+            const double dbl_value = AS_NUMBER(value);
+            if (ceil(dbl_value) == floor(dbl_value)) {
+                const int64_t int64_value = (int64_t)dbl_value;
+                snprintf(buffer, max_length, "%" PRId64, int64_value);
+            } else {
+                snprintf(buffer, max_length, "%g", dbl_value);
+            }
             break;
+        }
+
         case VALUE_TYPE_OBJECT:
             print_object_to_buffer(buffer, max_length, value);
             break;
+
         default:
             assert(!"Missing case in print_value()");
             snprintf(buffer, max_length, "???");

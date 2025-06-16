@@ -51,12 +51,11 @@ typedef enum {      // args:
     OP_JUMP_IF_TRUE,    // 16 bit signed offset
     OP_JUMP_IF_FALSE,   // 16 bit signed offset
     
-    OP_DUP,         // -
     OP_POP,         // -
 
     OP_CALL,        // 8 bit argument count
-
     OP_RETURN,      // -
+    
     OP_PRINT,       // -
 
 } OpCode;
