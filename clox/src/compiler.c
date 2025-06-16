@@ -42,7 +42,9 @@ typedef enum {
     TYPE_FUNCTION,
 } function_type_t;
 
-typedef struct {
+typedef struct compiler {
+    struct compiler* enclosing;
+
     // compilation target
     function_object_t* function;
     function_type_t function_type;
@@ -112,9 +114,10 @@ static void binary(parser_t*, bool);
 static void ternary(parser_t*, bool);
 static void and_(parser_t*, bool); // 'and' already defined in iso646.h
 static void or_(parser_t*, bool); // 'or' already defined in iso646.h
+static void call(parser_t*, bool);
 
 static const parse_rule_t g_rules[] = {
-    [TOKEN_LEFT_PAREN]      = {grouping, NULL,   PREC_NONE},
+    [TOKEN_LEFT_PAREN]      = {grouping, call,   PREC_CALL},
     [TOKEN_RIGHT_PAREN]     = {NULL,     NULL,   PREC_NONE},
     [TOKEN_LEFT_BRACE]      = {NULL,     NULL,   PREC_NONE},
     [TOKEN_RIGHT_BRACE]     = {NULL,     NULL,   PREC_NONE},
@@ -192,18 +195,28 @@ static void parser_init(parser_t* parser, object_root_t* root, const char* sourc
     advance(parser);
 }
 
-static void compiler_init(compiler_t* compiler, object_root_t* root, function_type_t type) {
+static void begin_compiler(parser_t* parser, compiler_t* compiler, object_root_t* root, function_type_t type) {
+    assert(parser);
     assert(compiler);
     assert(root);
 
     memset(compiler, 0, sizeof(compiler_t));
 
-    compiler->function = NULL;
+    // create linked list of compiler-chain
+    compiler->enclosing = parser->current_compiler;
+    parser->current_compiler = compiler;
+
+    compiler->function = create_function_object(root);
     compiler->function_type = type;
 
     compiler->scope_depth = 0;
     compiler->local_count = 0;
     compiler->loop_count = 0;
+
+    // copy name from previously parsed token
+    if (type == TYPE_FUNCTION) {
+        compiler->function->name = create_string_object(root, parser->previous.start, parser->previous.length);
+    }
 
     // always reserve local 0 for the function-object
     {
@@ -215,6 +228,30 @@ static void compiler_init(compiler_t* compiler, object_root_t* root, function_ty
         local->is_const = true;
         local->name = (token_t) { .type = TOKEN_NONE, .start = "", .length = 0, .line = 0 };
     }
+}
+
+static const function_object_t* end_compiler(parser_t* parser) {
+    assert(parser);
+    assert(parser->current_compiler);
+
+    compiler_t* const compiler = parser->current_compiler;
+    const function_object_t* const function = compiler->function;
+
+    // remove from list
+    parser->current_compiler = compiler->enclosing;
+
+
+    //xxx
+    {
+        value_t value = OBJECT_VALUE((object_t*)function);
+        char buffer[128];
+        print_value_to_buffer(buffer, sizeof(buffer), value);
+
+        disassemble_chunk(&function->chunk, buffer);
+    }
+    //xxx
+
+    return function;
 }
 
 //
@@ -326,6 +363,7 @@ static void emit_byte_and_long(parser_t* parser, uint8_t value1, uint32_t value2
 }
 
 static void emit_return(parser_t* parser) {
+    emit_byte(parser, OP_NIL); // return value
     emit_byte(parser, OP_RETURN);
 }
 
@@ -536,6 +574,11 @@ static size_t add_hidden_local(parser_t* parser) {
 static void mark_initialized(parser_t* parser) {
     compiler_t* const compiler = get_compiler(parser);
 
+    // Ignore for global variables.
+    if (compiler->scope_depth == 0) {
+        return;
+    }
+
     assert(compiler->local_count > 0);
 
     local_t *const top_local = compiler->locals + compiler->local_count - 1;
@@ -589,7 +632,7 @@ static void declare_variable(parser_t* parser, bool is_const) {
     add_local(parser, name, is_const);
 }
 
-static size_t parse_variable_name(parser_t* parser, bool is_const, const char* error_message) {
+static size_t parse_variable_name_and_declare(parser_t* parser, bool is_const, const char* error_message) {
     compiler_t* const compiler = get_compiler(parser);
 
     consume(parser, TOKEN_IDENTIFIER, error_message);
@@ -779,6 +822,37 @@ static void or_(parser_t* parser, bool) {
     patch_jump_from(parser, jump);
 }
 
+static size_t argument_list(parser_t* parser) {
+    // '(' already consumed
+    // ()
+    // (a1, a2, a3, ...)
+
+    size_t count = 0;
+    if (!check(parser, TOKEN_RIGHT_PAREN)) {
+        do {
+            // parser arg-expression and leave it on the stack
+            expression(parser);
+            count++;
+        } while (match(parser, TOKEN_COMMA));
+    }
+    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+    return count;
+}
+
+static void call(parser_t* parser, bool) {
+    // '(' already consumed
+    // ()
+    // (a1, a2, a3, ...)
+
+    const size_t arg_count = argument_list(parser);
+
+    if (arg_count > 255) {
+        error_at_current(parser, "Can't have more than 255 arguments.");
+    }
+
+    emit_bytes(parser, OP_CALL, (uint8_t)arg_count);
+}
+
 //
 // error recovery
 //
@@ -918,8 +992,11 @@ static loop_t* resolve_loop(parser_t* parser, size_t loop_offset) {
 // Recursive descent parser
 //
 
+static void block(parser_t* parser);
 static void statement(parser_t* parser);
 static void declaration(parser_t *parser);
+
+
 
 static void expression(parser_t* parser) {
     parse_precendence(parser, PREC_ASSIGNMENT);
@@ -928,17 +1005,17 @@ static void expression(parser_t* parser) {
 
 
 static void var_declaration(parser_t* parser, bool is_const) {
-    compiler_t* const compiler = get_compiler(parser);
-
-    // var a = b;
-    // var a;
     // "var" already consumed
+    // var a = expression;
+    // var a;
+
+    compiler_t* const compiler = get_compiler(parser);
 
     if (parser->previous.type == TOKEN_CONST && compiler->scope_depth == 0) {
         error_at_current(parser, "Const variables are not supported at global scope.");
     }
 
-    const uint32_t global_id = parse_variable_name(parser, is_const, "Expect variable name.");
+    const size_t global_id = parse_variable_name_and_declare(parser, is_const, "Expect variable name.");
 
     if (match(parser, TOKEN_EQUAL)) {
         expression(parser);
@@ -951,7 +1028,74 @@ static void var_declaration(parser_t* parser, bool is_const) {
     if (compiler->scope_depth > 0) {
         // local variable, value is just left on the stack
 
+        // left as 'declared but not initialized' in parse_variable_name_and_declare().
+        // mark local as 'initialized'.
+        mark_initialized(parser);
+    } else {
+        // global variable
+        emit_define_global(parser, global_id);
+    }
+}
+
+static void function(parser_t* parser) {
+    // expects:
+    // () { decls* }
+    // (parms) { decls* }
+
+    compiler_t compiler;
+    begin_compiler(parser, &compiler, parser->root, TYPE_FUNCTION);
+    
+    begin_scope(parser);
+
+    // parameter list.
+    consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+    if (!check(parser, TOKEN_RIGHT_PAREN)) {
+        size_t arity = 0;
+        // p1, p2, p3, ...
+        do {
+            arity++;
+            if (arity > 255) {
+                error_at_current(parser, "Can't have more than 255 parameters.");
+            }
+
+            parse_variable_name_and_declare(parser, true, "Expect parameter name.");
+            mark_initialized(parser);
+        } while (match(parser, TOKEN_COMMA));
+        compiler.function->arity = arity;
+    }
+    consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+
+    // body.
+    consume(parser, TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+    block(parser);
+
+    emit_return(parser);
+    end_scope(parser);
+
+    const function_object_t* const obj = end_compiler(parser);
+
+    // load function object onto stack.
+    const value_t value = OBJECT_VALUE((object_t*)obj);
+    emit_const(parser, value);
+}
+
+static void fun_declaration(parser_t* parser) {
+    // "fun" already consumed
+    // fun name() { declaration* }
+    // fun name(parameters) { declaration* }
+
+    compiler_t* const compiler = get_compiler(parser);
+
+    const size_t global_id = parse_variable_name_and_declare(parser, true, "Expect function name.");
+
+    // parse parameters and body
+    function(parser);
+
+    if (compiler->scope_depth > 0) {
+        // local variable, value is just left on the stack
+
         // left as 'declared but not initialized' in parse_variable_name().
+        // mark local as 'initialized'.
         mark_initialized(parser);
     } else {
         // global variable
@@ -1302,7 +1446,7 @@ static void break_statement(parser_t* parser) {
 
 static void continue_statement(parser_t* parser) {
     // 'continue' already consumed
-    
+
     compiler_t* const compiler = get_compiler(parser);
     
     if (compiler->loop_count == 0) {
@@ -1326,6 +1470,24 @@ static void continue_statement(parser_t* parser) {
     emit_jump_to(parser, OP_JUMP, target_loop->continue_addr);
 }
 
+static void return_statement(parser_t* parser) {
+    // "return" already consumed
+    // return;
+    // return expression;
+
+    if (parser->current_compiler->function_type == TYPE_SCRIPT) {
+        error_at_previous(parser, "Can't return from top-level code.");
+    }
+
+    if (match(parser, TOKEN_SEMICOLON)) {
+        emit_return(parser);
+    } else {
+        expression(parser);
+        consume(parser, TOKEN_SEMICOLON, "Expect ';' after return value.");
+        emit_byte(parser, OP_RETURN);
+    }
+}
+
 
 
 static void statement(parser_t* parser) {
@@ -1343,6 +1505,8 @@ static void statement(parser_t* parser) {
         break_statement(parser);
     } else if (match(parser, TOKEN_CONTINUE)) {
         continue_statement(parser);
+    } else if (match(parser, TOKEN_RETURN)) {
+        return_statement(parser);
     } else if (match(parser, TOKEN_LEFT_BRACE)) {
         begin_scope(parser);
         block(parser);
@@ -1357,6 +1521,8 @@ static void declaration(parser_t *parser) {
         var_declaration(parser, false);
     } else if (match(parser, TOKEN_CONST)) {
         var_declaration(parser, true);
+    } else if (match(parser, TOKEN_FUN)) {
+        fun_declaration(parser);
     } else {
         statement(parser);
     }
@@ -1370,7 +1536,7 @@ static void declaration(parser_t *parser) {
 // ...
 //
 
-function_object_t* compile(object_root_t* root, const char* source) {
+const function_object_t* compile(object_root_t* root, const char* source) {
     assert(root);
     assert(source);
 
@@ -1387,20 +1553,16 @@ function_object_t* compile(object_root_t* root, const char* source) {
             printf("Token: %16s '%.*s'\n", token_type_to_string(token.type), token.length, token.start);
             if (token.type == TOKEN_EOF) break;
         }
-        return false;
+        return NULL;
     }
     //xxx
     
-    function_object_t* const function = create_function_object(root);
-    assert(function);
-
-    compiler_t compiler;
-    compiler_init(&compiler, root, TYPE_SCRIPT);
-    compiler.function = function;
 
     parser_t parser;
     parser_init(&parser, root, source);
-    parser.current_compiler = &compiler;
+
+    compiler_t compiler;
+    begin_compiler(&parser, &compiler, root, TYPE_SCRIPT);
 
 
 
@@ -1417,10 +1579,8 @@ function_object_t* compile(object_root_t* root, const char* source) {
         emit_return(&parser);
     }
 
-    //#ifdef VM_PRINT_CODE
-    disassemble_chunk(&function->chunk, "Code");
-    //#endif
 
-    //return !parser.had_error;
+    const function_object_t* function = end_compiler(&parser);
+
     return !parser.had_error ? function : NULL;
 }

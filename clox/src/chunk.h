@@ -53,6 +53,9 @@ typedef enum {      // args:
     
     OP_DUP,         // -
     OP_POP,         // -
+
+    OP_CALL,        // 8 bit argument count
+
     OP_RETURN,      // -
     OP_PRINT,       // -
 

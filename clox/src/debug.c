@@ -130,6 +130,8 @@ size_t disassemble_instruction(const chunk_t* chunk, size_t offset) {
 
         case OP_DUP:        return simple_instruction("OP_DUP");
         case OP_POP:        return simple_instruction("OP_POP");
+
+        case OP_CALL:       return byte_instruction(chunk, "OP_CALL", offset);
         case OP_RETURN:     return simple_instruction("OP_RETURN");
         case OP_PRINT:      return simple_instruction("OP_PRINT");
 

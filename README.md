@@ -44,7 +44,7 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Global variables
     - [x] Block statements + local variables
     - [x] Const local variables
-    - [ ] Test runner
+    - [ ] Test runner (Idea: include in CI-run)
     - [x] If statements
     - [x] Logical operators
     - [x] While statements
@@ -52,7 +52,9 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Ternary operator
     - [x] Switch statements
     - [x] break/continue for loops
-    - [ ] Functions and calls
+    - [x] Functions and calls
+    - [ ] Anonymous functions
+    - [ ] Native functions
     - [ ] ...
 
 ## Building / Running

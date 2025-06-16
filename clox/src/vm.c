@@ -13,13 +13,27 @@
 #include <stdlib.h>
 #include <string.h>
 
-//#define VM_TRACE_EXECUTION
+#define VM_TRACE_EXECUTION
+
+#define VM_FRAMES_MAX   256
+
+#define VM_STACK_MAX    (VM_FRAMES_MAX * UINT8_MAX)
 
 
+
+typedef struct {
+    const function_object_t* function;
+    const uint8_t* ip;
+    value_t* base_pointer;
+    // [0] = function object
+    // [1] = first local
+    // [2] = second local
+    // ...
+} call_frame_t;
 
 typedef struct vm {
-    const chunk_t* chunk;
-    const uint8_t* ip;
+    call_frame_t frames[VM_FRAMES_MAX];
+    size_t frame_count;
 
     value_t stack[VM_STACK_MAX];
     value_t* sp;
@@ -28,14 +42,13 @@ typedef struct vm {
     table_t globals;
 } vm_t;
 
+
+
 vm_t* vm_create(void) {
     vm_t *vm = (vm_t*)malloc(sizeof(vm_t));
     assert(vm);
 
     memset(vm, 0, sizeof(vm_t));
-
-    vm->chunk = NULL;
-    vm->ip = NULL;
 
     vm->sp = vm->stack; // sp points to next free slot
 
@@ -62,33 +75,88 @@ static void reset_stack(vm_t* vm) {
     // TODO
 }
 
+static call_frame_t* get_current_frame(vm_t* vm) {
+    assert(vm);
+    assert(vm->frame_count > 0);
+
+    return vm->frames + vm->frame_count - 1;
+}
+
+static const chunk_t* get_current_chunk(vm_t* vm) {
+    const call_frame_t* const frame = get_current_frame(vm);
+
+    assert(frame->function);
+
+    return &frame->function->chunk;
+}
+
 static void runtime_error(vm_t* vm, const char* format, ...) {
-    const size_t offset = vm->ip - vm->chunk->code - 1;
-    const uint32_t line = chunk_get_line_for_offset(vm->chunk, offset);
-    fprintf(stderr, "[Line %u] Runtime error: ", line);
- 
-    va_list args;
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    va_end(args);
-    fputs("\n", stderr);
+    // print error
+    {
+        fprintf(stderr, "Runtime error: ");
+     
+        va_list args;
+        va_start(args, format);
+        vfprintf(stderr, format, args);
+        va_end(args);
+        fputs("\n", stderr);
+    }
+
+    // print call stack
+    {
+        for (size_t frame_index = vm->frame_count - 1 ; ; ) {
+            const call_frame_t* const frame = vm->frames + frame_index;
+            const function_object_t* const function = frame->function;
+            const chunk_t* const chunk = &function->chunk;
+            const size_t offset = frame->ip - chunk->code - 1;
+            const uint32_t line = chunk_get_line_for_offset(chunk, offset);
+
+            if (function->name) {
+                fprintf(stderr, "[line %u] in %s()\n", line, function->name->chars);
+            } else {
+                fprintf(stderr, "[line %u] in script\n", line);
+            }
+
+            if (frame_index == 0) break;
+            frame_index--;
+        }
+    }
 
     reset_stack(vm);
 }
 
+static run_result_t vm_run(vm_t* vm);
+
 run_result_t vm_run_source(vm_t* vm, const char* source) {
     // compile source to function-object
-    function_object_t* const function = compile(&vm->root, source);
+    const function_object_t* const function = compile(&vm->root, source);
     if (!function) {
         return RUN_COMPILE_ERROR;
     }
 
-    // Set function-object as local 0
-    vm_stack_push(vm, OBJECT_VALUE((object_t*)function));
-    
-    const run_result_t result = vm_run_chunk(vm, &function->chunk);
+    // create initial call frame
+    vm->frame_count++;
+    call_frame_t* const frame = vm->frames + vm->frame_count - 1;
+    frame->function = function;
+    frame->ip = function->chunk.code;
+    frame->base_pointer = vm->stack;
 
-    vm_stack_pop(vm);
+    // set function-object as local 0
+    vm_stack_push(vm, OBJECT_VALUE((object_t*)function));
+
+    // run
+    const run_result_t result = vm_run(vm);
+
+    // vm_run should return a clean vm
+    assert(vm->sp == vm->stack);
+    assert(vm->frame_count == 0);
+
+    // drop local 0
+    //vm_stack_pop(vm);
+
+    // drop initial call frame
+    //assert(vm->frame_count == 1);
+    //vm->frame_count--;
 
     return result;
 }
@@ -144,43 +212,91 @@ static void concatenate(vm_t* vm) {
     vm_stack_push(vm, OBJECT_VALUE((object_t*)result));
 }
 
-#ifndef NDEBUG
-static void vm_check_bounds(const vm_t* vm, size_t bytes_to_read) {
-    const uint8_t* const start = vm->chunk->code;
-    const uint8_t* const end = vm->chunk->code + vm->chunk->count;
+static bool call(vm_t* vm, value_t callee, size_t arg_count) {
 
-    if (vm->ip < start) {
+    //xxx
+    // printf(">>> call: ");
+    // print_value(callee);
+    // printf(" arg_count=%zu\n", arg_count);
+    //xxx
+
+    if (IS_OBJECT(callee)) {
+        switch (OBJECT_TYPE(callee)) {
+            case OBJECT_TYPE_FUNCTION: {
+                const function_object_t* const function = AS_FUNCTION(callee);
+
+                // TODO make function, use for initial call as well
+
+                if (function->arity != arg_count) {
+                    runtime_error(vm, "Expected %zu arguments but got %zu.", function->arity, arg_count);
+                    return false;
+                }
+
+                if (vm->frame_count >= VM_FRAMES_MAX) {
+                    runtime_error(vm, "Call stack overflow.");
+                    return false;
+                }
+
+                vm->frame_count++;
+                call_frame_t* const frame = vm->frames + vm->frame_count - 1;
+
+                frame->function = function;
+                frame->ip = function->chunk.code;
+
+                // point to: [fun-obj] [arg1] [arg2] ...
+                frame->base_pointer = vm->sp - arg_count - 1;
+
+                assert(IS_FUNCTION(frame->base_pointer[0]));
+
+                return true;
+            }
+
+            default: {
+                break;
+            }
+        }
+    }
+
+    runtime_error(vm, "Can only call functions and classes.");
+    return false;
+}
+
+#ifndef NDEBUG
+static void vm_check_bounds(vm_t* vm, size_t bytes_to_read) {
+    const call_frame_t* frame = get_current_frame(vm);
+    const chunk_t* chunk = get_current_chunk(vm);
+
+    const uint8_t* const start = chunk->code;
+    const uint8_t* const end = chunk->code + chunk->count;
+
+    if (frame->ip < start) {
         printf("Error: IP before chunk start: start=%p end=%p ip=%p bytes_to_read=%zu",
-            (void*)start, (void*)end, (void*)vm->ip, bytes_to_read);
+            (void*)start, (void*)end, (void*)frame->ip, bytes_to_read);
         assert(!"IP before chunk start");
     }
 
-    if (vm->ip + bytes_to_read > end) {
+    if (frame->ip + bytes_to_read > end) {
         printf("Error: IP after chunk end. start=%p end=%p ip=%p bytes_to_read=%zu",
-            (void*)start, (void*)end, (void*)vm->ip, bytes_to_read);
+            (void*)start, (void*)end, (void*)frame->ip, bytes_to_read);
         assert(!"IP after chunk end");
     }
 }
 #endif
 
-run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
+static run_result_t vm_run(vm_t* vm) {
     assert(vm);
-    assert(vm->chunk == NULL);
-    assert(vm->ip == NULL);
+    assert(vm->frame_count > 0);
 
-    assert(chunk);
-    assert(chunk->code);
-    assert(chunk->count > 0);
+    // store current frame in a local variable for faster access,
+    // must be manually updated.
+    call_frame_t* frame = vm->frames + vm->frame_count - 1;
 
-    void* const sp_at_start = vm->sp;
+    assert(frame->function);
+    assert(frame->ip);
+    assert(frame->base_pointer);
 
-    vm->chunk = chunk;
-    vm->ip = chunk->code;
-
-    // cleanup before returning
+    // cleanup before returning >>> TODO remove ?
     #define RETURN(value) do { \
-        vm->chunk = NULL; \
-        vm->ip = NULL; \
         return value; \
     } while (false)
 
@@ -201,8 +317,8 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
         const size_t _size = sizeof(type); \
         CHECK_IP_BOUNDS(_size); \
         type _val; \
-        memcpy(&_val, vm->ip, _size); \
-        vm->ip += _size; \
+        memcpy(&_val, frame->ip, _size); \
+        frame->ip += _size; \
         _val; \
     })
     #define READ_INT16()    READ_TYPE(int16_t)
@@ -215,8 +331,9 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     #endif
 
     // returns value_t
-    #define READ_CONST()        (chunk->values.values[READ_BYTE()])
-    #define READ_CONST_LONG()   (chunk->values.values[READ_UINT32()])
+    // TODO cache chunk/values as well?
+    #define READ_CONST()        (frame->function->chunk.values.values[READ_BYTE()])
+    #define READ_CONST_LONG()   (frame->function->chunk.values.values[READ_UINT32()])
 
     #define PUSH(value)         vm_stack_push(vm, value)
     #define POP()               vm_stack_pop(vm)
@@ -254,12 +371,12 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
     for(;;) {
         #ifdef VM_TRACE_EXECUTION
         {
-            assert((void*)vm->chunk > (void*)0x100); // no-one overwrote the pointer with garbage
+            //assert((void*)vm->chunk > (void*)0x100); // no-one overwrote the pointer with garbage
 
             printf("\n");
             vm_stack_dump(vm);
             printf("Next: ");
-            disassemble_instruction(chunk, (size_t)(vm->ip - vm->chunk->code));
+            disassemble_instruction(&frame->function->chunk, (size_t)(frame->ip - frame->function->chunk.code));
         }
         #endif
 
@@ -347,11 +464,12 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
             case OP_GET_LOCAL_LONG: {
                 const uint32_t stack_index = opcode == OP_GET_LOCAL ? READ_BYTE() : READ_UINT32();
                 
-                if (stack_index >= VM_STACK_MAX) {
-                    ERROR("Stack overflow while getting local at index %u", stack_index);
-                }
+                // if (stack_index >= VM_STACK_MAX) {
+                //     ERROR("Stack overflow while getting local at index %u", stack_index);
+                // }
 
-                const value_t value = vm->stack[stack_index];
+                //const value_t value = vm->stack[stack_index];
+                const value_t value = frame->base_pointer[stack_index];
                 PUSH(value);
                 break;
             }
@@ -360,41 +478,79 @@ run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk) {
             case OP_SET_LOCAL_LONG: {
                 const uint32_t stack_index = opcode == OP_SET_LOCAL ? READ_BYTE() : READ_UINT32();
 
-                if (stack_index >= VM_STACK_MAX) {
-                    ERROR("Stack overflow while setting local at index %u", stack_index);
-                }
+                // if (stack_index >= VM_STACK_MAX) {
+                //     ERROR("Stack overflow while setting local at index %u", stack_index);
+                // }
 
                 const value_t value = PEEK(0); // leave on stack
-                vm->stack[stack_index] = value;
+                //vm->stack[stack_index] = value;
+                frame->base_pointer[stack_index] = value;
                 break;
             }
 
             case OP_JUMP: {
                 const int16_t offset = READ_INT16();
-                vm->ip = vm->ip + offset;
+                frame->ip += offset;
                 break;
             }
             case OP_JUMP_IF_TRUE: {
                 const int16_t offset = READ_INT16();
                 if (value_is_truey(PEEK(0))) { // leave on stack
-                    vm->ip += offset;
+                    frame->ip += offset;
                 }
                 break;
             }
             case OP_JUMP_IF_FALSE: {
                 const int16_t offset = READ_INT16();
                 if (value_is_falsey(PEEK(0))) { // leave on stack
-                    vm->ip += offset;
+                    frame->ip += offset;
                 }
                 break;
             }
 
-            case OP_DUP: PUSH(PEEK(0)); break;
+            case OP_DUP: PUSH(PEEK(0)); break; // TODO remove?
+
             case OP_POP: POP(); break;
 
+            case OP_CALL: {
+                // Stack: ... function-obj arg1 arg2 arg3
+
+                const size_t arg_count = READ_BYTE();
+                const value_t callee = PEEK(arg_count);
+
+                if (!call(vm, callee, arg_count)) {
+                    RETURN(RUN_RUNTIME_ERROR);
+                }
+
+                // refresh cached current frame
+                frame = vm->frames + vm->frame_count - 1;
+                break;
+            }
+
             case OP_RETURN: {
-                assert(vm->sp == sp_at_start); // make sure the stack is in the correct state
-                RETURN(RUN_OK);
+                // Stack before: ... function-obj arg1 arg2 arg3 ... return-value
+                // Stack after : ... return-value
+
+                const value_t return_value = POP();
+
+                // drop top frame
+                vm->frame_count--;
+
+                // exit vm?
+                if (vm->frame_count == 0) {
+                    POP(); // drop function-obj
+                    RETURN(RUN_OK);
+                }
+
+                // restore stack to the state before the call
+                vm->sp = frame->base_pointer;
+
+                PUSH(return_value);
+
+                // refresh cached current frame
+                frame = vm->frames + vm->frame_count - 1;
+
+                break;
             }
 
             case OP_PRINT: {

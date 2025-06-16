@@ -1,8 +1,6 @@
 #ifndef _clox_vm_h_
 #define _clox_vm_h_
 
-#define VM_STACK_MAX 256
-
 #include "value.h"
 
 typedef struct chunk chunk_t;
@@ -19,7 +17,6 @@ vm_t* vm_create(void);
 void vm_destroy(vm_t* vm);
 
 run_result_t vm_run_source(vm_t* vm, const char* source);
-run_result_t vm_run_chunk(vm_t* vm, const chunk_t* chunk);
 
 void vm_stack_dump(const vm_t *vm);
 void vm_stack_push(vm_t* vm, value_t value);

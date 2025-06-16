@@ -31,7 +31,7 @@ typedef struct string_object {
 
 typedef struct function_object {
     object_t object;
-    string_object_t* name;
+    const string_object_t* name;
     size_t arity;
     chunk_t chunk;
 } function_object_t;

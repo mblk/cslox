@@ -124,9 +124,10 @@ static void free_object(object_t* obj) {
         case OBJECT_TYPE_FUNCTION: {
             function_object_t* function = (function_object_t*)obj;
             chunk_free(&function->chunk);
-            if (function->name) {
-                free_object((object_t*)function->name);
-            }
+            // function->name has independant lifetime
+            // if (function->name) {
+            //     free_object((object_t*)function->name);
+            // }
             FREE_BY_COUNT(function_object_t, function, 1);
             break;
         }
