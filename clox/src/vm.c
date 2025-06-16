@@ -447,14 +447,17 @@ static run_result_t vm_run(vm_t* vm) {
     assert(vm);
     assert(vm->frame_count > 0);
 
-    // Note: storing pointer to current frame in a local variable for faster access, must be manually updated.
+    // Note: storing commonly used pointers in local variables for faster access, must be manually updated (OP_CALL, OP_RETURN).
     call_frame_t* frame = vm->frames + vm->frame_count - 1;
+    const value_t* values = frame->function->chunk.values.values;
+    register const uint8_t* ip = frame->ip;
 
     assert(frame->function);
     assert(frame->ip);
     assert(frame->base_pointer);
 
     #define ERROR(args...) do { \
+        frame->ip = ip; \
         runtime_error(vm, args); \
         return RUN_RUNTIME_ERROR; \
     } while (false)
@@ -477,24 +480,29 @@ static run_result_t vm_run(vm_t* vm) {
         const size_t _size = sizeof(type); \
         CHECK_IP_BOUNDS(_size); \
         type _val; \
-        memcpy(&_val, frame->ip, _size); \
-        frame->ip += _size; \
+        memcpy(&_val, ip, _size); \
+        ip += _size; \
         _val; \
     })
+
+    // does not appear to make a difference, leaving it here for laters testing/performance improvements
+    //#define READ_INT16() (ip += 2, (int16_t)((ip[-1] << 8) | ip[-2]))
+    //#define READ_UINT32() (ip += 4, (uint32_t)((ip[-1] << 8) | (ip[-2] << 8) | (ip[-3] << 8) | ip[-4]))
+
     #define READ_INT16()    READ_TYPE(int16_t)
     #define READ_UINT32()   READ_TYPE(uint32_t)
     
     #ifndef NDEBUG
     #define READ_BYTE()     READ_TYPE(uint8_t)
     #else
-    #define READ_BYTE()     (*(frame->ip++))
+    #define READ_BYTE()     (*(ip++))
     #endif
 
     // returns value_t
-    // TODO cache chunk/values as well?
-    #define READ_CONST()        (frame->function->chunk.values.values[READ_BYTE()])
-    #define READ_CONST_LONG()   (frame->function->chunk.values.values[READ_UINT32()])
+    #define READ_CONST()        (values[READ_BYTE()])
+    #define READ_CONST_LONG()   (values[READ_UINT32()])
 
+    // take/return value_t
     #define PUSH(value)         vm_stack_push(vm, value)
     #define POP()               vm_stack_pop(vm)
     #define PEEK(offset)        vm_stack_peek(vm, offset)
@@ -624,10 +632,6 @@ static run_result_t vm_run(vm_t* vm) {
             case OP_GET_LOCAL_LONG: {
                 const uint32_t stack_index = opcode == OP_GET_LOCAL ? READ_BYTE() : READ_UINT32();
                 
-                // if (stack_index >= VM_STACK_MAX) {
-                //     ERROR("Stack overflow while getting local at index %u", stack_index);
-                // }
-
                 CHECK_SP_BOUNDS(frame->base_pointer + stack_index);
 
                 const value_t value = frame->base_pointer[stack_index];
@@ -639,10 +643,6 @@ static run_result_t vm_run(vm_t* vm) {
             case OP_SET_LOCAL_LONG: {
                 const uint32_t stack_index = opcode == OP_SET_LOCAL ? READ_BYTE() : READ_UINT32();
 
-                // if (stack_index >= VM_STACK_MAX) {
-                //     ERROR("Stack overflow while setting local at index %u", stack_index);
-                // }
-
                 CHECK_SP_BOUNDS(frame->base_pointer + stack_index);
 
                 const value_t value = PEEK(0); // leave on stack
@@ -652,20 +652,20 @@ static run_result_t vm_run(vm_t* vm) {
 
             case OP_JUMP: {
                 const int16_t offset = READ_INT16();
-                frame->ip += offset;
+                ip += offset;
                 break;
             }
             case OP_JUMP_IF_TRUE: {
                 const int16_t offset = READ_INT16();
                 if (value_is_truey(PEEK(0))) { // leave on stack
-                    frame->ip += offset;
+                    ip += offset;
                 }
                 break;
             }
             case OP_JUMP_IF_FALSE: {
                 const int16_t offset = READ_INT16();
                 if (value_is_falsey(PEEK(0))) { // leave on stack
-                    frame->ip += offset;
+                    ip += offset;
                 }
                 break;
             }
@@ -678,12 +678,16 @@ static run_result_t vm_run(vm_t* vm) {
                 const size_t arg_count = READ_BYTE();
                 const value_t callee = PEEK(arg_count);
 
+                frame->ip = ip;
+
                 if (!call(vm, callee, arg_count)) {
                     return RUN_RUNTIME_ERROR;
                 }
 
                 // refresh cached current frame
                 frame = vm->frames + vm->frame_count - 1;
+                values = frame->function->chunk.values.values;
+                ip = frame->ip;
                 break;
             }
 
@@ -709,15 +713,13 @@ static run_result_t vm_run(vm_t* vm) {
 
                 // refresh cached current frame
                 frame = vm->frames + vm->frame_count - 1;
+                values = frame->function->chunk.values.values;
+                ip = frame->ip;
 
                 break;
             }
 
             case OP_PRINT: {
-                //xxx
-                printf("OUTPUT: ");
-                //xxx
-
                 print_value(POP());
                 printf("\n");
                 break;
