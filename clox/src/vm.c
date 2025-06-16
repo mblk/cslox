@@ -41,14 +41,13 @@ typedef struct vm {
 
     object_root_t root;
     table_t globals;
+
+    bool has_runtime_error;
 } vm_t;
 
 
 
-// for native_assert()
-// TODO make a utility function to print current execution-location
-static call_frame_t* get_current_frame(vm_t* vm);
-static const chunk_t* get_current_chunk(vm_t* vm);
+static void runtime_error(vm_t* vm, const char* format, ...);
 
 
 
@@ -75,16 +74,20 @@ static void register_native(vm_t* vm, const char* name, size_t arity, native_fn_
     vm_stack_pop(vm);
 }
 
-static value_t native_clock(void* context, size_t arg_count, const value_t* args) {
+static bool native_clock(void* context, size_t arg_count, const value_t* args, value_t* result) {
     (void)context;
     (void)arg_count;
     (void)args;
+
     const double t = (double)clock() / CLOCKS_PER_SEC;
-    return NUMBER_VALUE(t);
+    *result = NUMBER_VALUE(t);
+    
+    return true;
 }
 
-static value_t native_dump(void* context, size_t arg_count, const value_t* args) {
+static bool native_dump(void* context, size_t arg_count, const value_t* args, value_t* result) {
     (void)context;
+    (void)result;
 
     printf("native_dump(%zu args):\n", arg_count);
     for(size_t i=0; i<arg_count; i++) {
@@ -93,11 +96,12 @@ static value_t native_dump(void* context, size_t arg_count, const value_t* args)
         printf("\n");
     }
 
-    return NIL_VALUE();
+    return true;
 }
 
-static value_t native_print(void* context, size_t arg_count, const value_t* args) {
+static bool native_print(void* context, size_t arg_count, const value_t* args, value_t* result) {
     (void)context;
+    (void)result;
 
     // TODO implement format strings etc
     
@@ -106,62 +110,44 @@ static value_t native_print(void* context, size_t arg_count, const value_t* args
     }
     printf("\n");
 
-    return NIL_VALUE();
+    return true;
 }
 
-static value_t native_tostring(void* context, size_t arg_count, const value_t* args) {
-    assert(context);
+static bool native_tostring(void* context, size_t arg_count, const value_t* args, value_t* result) {
+    (void)arg_count;
+    (void)result;
+
     vm_t* const vm = (vm_t*)context;
-
-    if (arg_count != 1) {
-        printf("Invalid arguments to native_tostring()\n");
-        return NIL_VALUE();
-    }
-
     const value_t value = args[0];
 
     char buffer[128];
     print_value_to_buffer(buffer, sizeof(buffer), value);
+    *result = OBJECT_VALUE((object_t*)create_string_object(&vm->root, buffer, strlen(buffer)));
 
-    return OBJECT_VALUE((object_t*)create_string_object(&vm->root, buffer, strlen(buffer)));
+    return true;
 }
 
-static value_t native_assert(void* context, size_t arg_count, const value_t* args) {
-    assert(context);
-    vm_t* const vm = (vm_t*)context;
+static bool native_assert(void* context, size_t arg_count, const value_t* args, value_t* result) {
+    (void)arg_count;
+    (void)result;
 
-    if (arg_count != 1) {
-        printf("assert: Invalid argument count: %zu\n", arg_count);
-        exit(1);
-    }
+    vm_t* const vm = (vm_t*)context;
 
     const value_t value = args[0];
     if (!IS_BOOL(value)) {
-        printf("assert: Invalid value type: ");
-        print_value(value);
-        printf("\n");
-        exit(1);
+        runtime_error(vm, "Invalid value type (%d)", (int)value.type);
+        return false;
     }
 
     const bool bool_value = AS_BOOL(value);
     if (!bool_value) {
-        printf("##\n");
-        printf("## assertion failed\n");
-        printf("##\n");
-        
-        const call_frame_t* frame = get_current_frame(vm);
-        const chunk_t* chunk = get_current_chunk(vm);
-        const size_t offset = (size_t)(frame->ip - chunk->code);
-        const uint32_t line = chunk_get_line_for_offset(chunk, offset);
-        
-        printf("at line %u\n", line);
-        // TODO somehow show exact expression which failed and print stack-trace
-
-        exit(1);
+        // TODO somehow show exact expression which failed?
+        runtime_error(vm, "Assertion failed");
+        return false;
     }
 
     // all good
-    return NIL_VALUE();
+    return true;
 }
 
 
@@ -252,6 +238,8 @@ static void runtime_error(vm_t* vm, const char* format, ...) {
     }
 
     reset_stack(vm);
+
+    vm->has_runtime_error = true;
 }
 
 static run_result_t vm_run(vm_t* vm);
@@ -388,7 +376,14 @@ static bool call(vm_t* vm, value_t callee, size_t arg_count) {
                     return false;
                 }
 
-                const value_t result = native->fn(vm, arg_count, vm->sp - arg_count);
+                value_t result = NIL_VALUE();
+
+                if (!native->fn(vm, arg_count, vm->sp - arg_count, &result)) {
+                    if (!vm->has_runtime_error) {
+                        runtime_error(vm, "Call to native function '%s' failed", native->name);
+                    }
+                    return false;
+                }
 
                 // drop function-obj and args
                 vm->sp -= arg_count + 1;

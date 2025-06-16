@@ -37,7 +37,7 @@ typedef struct function_object {
     chunk_t chunk;
 } function_object_t;
 
-typedef value_t (*native_fn_t)(void* context, size_t arg_count, const value_t* args);
+typedef bool (*native_fn_t)(void* context, size_t arg_count, const value_t* args, value_t* result);
 
 typedef struct native_object {
     object_t object;
