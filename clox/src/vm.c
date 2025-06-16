@@ -52,7 +52,7 @@ static const chunk_t* get_current_chunk(vm_t* vm);
 
 
 
-static void register_native(vm_t* vm, const char* name, native_fn_t fn) {
+static void register_native(vm_t* vm, const char* name, size_t arity, native_fn_t fn) {
     assert(vm);
     assert(name);
     assert(fn);
@@ -62,7 +62,7 @@ static void register_native(vm_t* vm, const char* name, native_fn_t fn) {
 
     // Note: stored on stack to prevent cleanup by GC.
     vm_stack_push(vm, OBJECT_VALUE((object_t*)create_string_object(&vm->root, name, name_len)));
-    vm_stack_push(vm, OBJECT_VALUE((object_t*)create_native_object(&vm->root, fn)));
+    vm_stack_push(vm, OBJECT_VALUE((object_t*)create_native_object(&vm->root, name, arity, fn)));
 
     assert(IS_STRING(vm->sp[-2]));
     assert(IS_NATIVE(vm->sp[-1]));
@@ -177,11 +177,11 @@ vm_t* vm_create(void) {
     object_root_init(&vm->root);
     table_init(&vm->globals);
 
-    register_native(vm, "clock", native_clock);
-    register_native(vm, "dump", native_dump);
-    register_native(vm, "printf", native_print); // TODO there is some kind of collision with the print-statement if it's just called "print"
-    register_native(vm, "tostring", native_tostring);
-    register_native(vm, "assert", native_assert);
+    register_native(vm, "clock", 0, native_clock);
+    register_native(vm, "dump", SIZE_MAX, native_dump);
+    register_native(vm, "printf", SIZE_MAX, native_print); // TODO there is some kind of collision with the print-statement if it's just called "print"
+    register_native(vm, "tostring", 1, native_tostring);
+    register_native(vm, "assert", 1, native_assert);
 
     return vm;
 }
@@ -382,6 +382,11 @@ static bool call(vm_t* vm, value_t callee, size_t arg_count) {
 
             case OBJECT_TYPE_NATIVE: {
                 const native_object_t* const native = AS_NATIVE(callee);
+
+                if (native->arity != SIZE_MAX && native->arity != arg_count) {
+                    runtime_error(vm, "Native function '%s': Expected %zu arguments but got %zu.", native->name, native->arity, arg_count);
+                    return false;
+                }
 
                 const value_t result = native->fn(vm, arg_count, vm->sp - arg_count);
 

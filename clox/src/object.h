@@ -41,6 +41,8 @@ typedef value_t (*native_fn_t)(void* context, size_t arg_count, const value_t* a
 
 typedef struct native_object {
     object_t object;
+    const char* name; // ptr to rodata
+    size_t arity;
     native_fn_t fn;
 } native_object_t;
 
@@ -48,7 +50,7 @@ typedef struct native_object {
 // object_t:            [type] [next]
 // string_object_t:     [type] [next] [hash] [length] [chars...]
 // function_object_t:   [type] [next] [name] [arity] [chunk]
-// native_object_t:     [type] [next] [fn]
+// native_object_t:     [type] [next] [name] [arity] [fn]
 // ...
 
 // value to object
@@ -77,7 +79,7 @@ void object_root_dump(object_root_t* root, const char* name);
 
 const string_object_t* create_string_object(object_root_t* root, const char* chars, size_t length);
 function_object_t* create_function_object(object_root_t* root);
-native_object_t* create_native_object(object_root_t* root, native_fn_t fn);
+native_object_t* create_native_object(object_root_t* root, const char* name, size_t arity, native_fn_t fn);
 
 uint32_t hash_object(value_t value);
 bool objects_equal(value_t a, value_t b);

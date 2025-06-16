@@ -112,13 +112,15 @@ function_object_t* create_function_object(object_root_t* root) {
     return obj;
 }
 
-native_object_t* create_native_object(object_root_t* root, native_fn_t fn) {
+native_object_t* create_native_object(object_root_t* root, const char* name, size_t arity, native_fn_t fn) {
     assert(root);
     assert(fn);
 
     native_object_t* obj = (native_object_t*)create_object(root, sizeof(native_object_t), OBJECT_TYPE_NATIVE);
     assert(obj);
 
+    obj->name = name; // ptr to rodata
+    obj->arity = arity;
     obj->fn = fn;
 
     return obj;
@@ -244,7 +246,12 @@ void print_object(value_t value) {
         }
 
         case OBJECT_TYPE_NATIVE: {
-            printf("<native fn>");
+            const native_object_t* const native = AS_NATIVE(value);
+            if (native->name) {
+                printf("<native fn %s>", native->name);
+            } else {
+                printf("<native fn>");
+            }
             break;
         }
 
@@ -276,7 +283,12 @@ void print_object_to_buffer(char* buffer, size_t max_length, value_t value) {
         }
 
         case OBJECT_TYPE_NATIVE: {
-            snprintf(buffer, max_length, "<native fn>");
+            const native_object_t* const native = AS_NATIVE(value);
+            if (native->name) {
+                snprintf(buffer, max_length, "<native fn %s>", native->name);
+            } else {
+                snprintf(buffer, max_length, "<native fn>");
+            }
             break;
         }
 
