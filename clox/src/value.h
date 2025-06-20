@@ -31,7 +31,7 @@ static_assert(sizeof(value_t) == 16);
 #define NIL_VALUE()         ((value_t){VALUE_TYPE_NIL,    {.number = 0}})
 #define BOOL_VALUE(value)   ((value_t){VALUE_TYPE_BOOL,   {.boolean = value}})
 #define NUMBER_VALUE(value) ((value_t){VALUE_TYPE_NUMBER, {.number = value}})
-#define OBJECT_VALUE(value) ((value_t){VALUE_TYPE_OBJECT, {.object = value}})
+#define OBJECT_VALUE(value) ((value_t){VALUE_TYPE_OBJECT, {.object = value}}) // TODO implicitly convert to object_t*?
 
 // lox-type to c-type
 #define AS_BOOL(value)      ((value).as.boolean)

@@ -14,7 +14,7 @@ LD = gcc
 #LD = clang
 
 # Flags
-COMMON_CFLAGS = -std=c23 -c -Wall -Wextra
+COMMON_CFLAGS = -std=c23 -c -Wall -Wextra -Werror
 COMMON_LDFLAGS =
 
 ifeq ($(BUILD), release)

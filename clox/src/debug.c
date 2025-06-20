@@ -1,5 +1,7 @@
 #include "debug.h"
 #include "chunk.h"
+#include "compiler.h"
+#include "object.h"
 #include "value.h"
 
 #include <stdint.h>
@@ -71,6 +73,28 @@ static size_t simple_instruction(const char *name) {
     return 1;
 }
 
+static size_t closure_instruction(const chunk_t* chunk, const char* name, size_t offset) {
+    offset++;
+    const uint8_t const_index = chunk_read8(chunk, offset++);
+    const value_t const_value = chunk->values.values[const_index];
+
+    assert(IS_FUNCTION(const_value));
+    const function_object_t* const function = AS_FUNCTION(const_value);
+
+    printf("%-20s %4d '", name, const_index);
+    print_value(const_value);
+    printf("'\n");
+
+    for (size_t i=0; i<function->upvalue_count; i++) {
+        printf("%04zd    |                         ", offset);
+        const uint8_t is_local = chunk_read8(chunk, offset++);
+        const uint8_t index = chunk_read8(chunk, offset++);
+        printf("%s %u\n", is_local == 1 ? "local" : "upvalue", index);
+    }
+
+    return 1 + 1 + function->upvalue_count * 2;
+}
+
 static size_t unknown_instruction(uint8_t opcode) {
     printf("Unknown opcode %02X\n", opcode);
     return 1;
@@ -79,7 +103,6 @@ static size_t unknown_instruction(uint8_t opcode) {
 size_t disassemble_instruction(const chunk_t* chunk, size_t offset) {
     assert(chunk);
 
-    //printf("%04zX ", offset);
     printf("%04zd ", offset);
 
     const uint32_t line = chunk_get_line_for_offset(chunk, offset);
@@ -124,16 +147,23 @@ size_t disassemble_instruction(const chunk_t* chunk, size_t offset) {
         case OP_SET_LOCAL:      return byte_instruction(chunk, "OP_SET_LOCAL", offset);
         case OP_SET_LOCAL_LONG: return byte_instruction_long(chunk, "OP_SET_LOCAL_LONG", offset);
 
-        case OP_JUMP:          return jump_instruction(chunk, "OP_JUMP", offset);
-        case OP_JUMP_IF_TRUE:  return jump_instruction(chunk, "OP_JUMP_IF_TRUE", offset);
-        case OP_JUMP_IF_FALSE: return jump_instruction(chunk, "OP_JUMP_IF_FALSE", offset);
+        case OP_GET_UPVALUE:    return byte_instruction(chunk, "OP_GET_UPVALUE", offset);
+        case OP_SET_UPVALUE:    return byte_instruction(chunk, "OP_SET_UPVALUE", offset);
 
-        case OP_POP:        return simple_instruction("OP_POP");
+        case OP_JUMP:           return jump_instruction(chunk, "OP_JUMP", offset);
+        case OP_JUMP_IF_TRUE:   return jump_instruction(chunk, "OP_JUMP_IF_TRUE", offset);
+        case OP_JUMP_IF_FALSE:  return jump_instruction(chunk, "OP_JUMP_IF_FALSE", offset);
 
-        case OP_CALL:       return byte_instruction(chunk, "OP_CALL", offset);
-        case OP_RETURN:     return simple_instruction("OP_RETURN");
-        case OP_PRINT:      return simple_instruction("OP_PRINT");
+        case OP_POP:            return simple_instruction("OP_POP");
 
-        default:            return unknown_instruction(opcode);
+        case OP_CALL:           return byte_instruction(chunk, "OP_CALL", offset);
+        case OP_RETURN:         return simple_instruction("OP_RETURN");
+
+        case OP_CLOSURE:        return closure_instruction(chunk, "OP_CLOSURE", offset);
+        case OP_CLOSE_UPVALUE:  return simple_instruction("OP_CLOSE_UPVALUE");
+
+        case OP_PRINT:          return simple_instruction("OP_PRINT");
+
+        default:                return unknown_instruction(opcode);
     }
 }

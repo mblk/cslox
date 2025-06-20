@@ -16,6 +16,7 @@ void object_root_init(object_root_t* root) {
     assert(root);
 
     root->first = NULL;
+    root->open_upvalues = NULL;
 
     table_init(&root->strings);
 }
@@ -54,8 +55,10 @@ void object_root_dump(object_root_t* root, const char* name) {
 static object_t* create_object(object_root_t* root, size_t size, object_type_t type) {
     assert(root);
     assert(type == OBJECT_TYPE_STRING ||
+           type == OBJECT_TYPE_NATIVE ||
            type == OBJECT_TYPE_FUNCTION ||
-           type == OBJECT_TYPE_NATIVE);
+           type == OBJECT_TYPE_CLOSURE ||
+           type == OBJECT_TYPE_UPVALUE);
 
     object_t* obj = ALLOC_BY_SIZE(object_t, size);
     assert(obj);
@@ -99,6 +102,20 @@ const string_object_t* create_string_object(object_root_t* root, const char* cha
     }
 }
 
+native_object_t* create_native_object(object_root_t* root, const char* name, size_t arity, native_fn_t fn) {
+    assert(root);
+    assert(fn);
+    
+    native_object_t* obj = (native_object_t*)create_object(root, sizeof(native_object_t), OBJECT_TYPE_NATIVE);
+    assert(obj);
+    
+    obj->name = name; // ptr to rodata
+    obj->arity = arity;
+    obj->fn = fn;
+    
+    return obj;
+}
+
 function_object_t* create_function_object(object_root_t* root) {
     assert(root);
     
@@ -112,16 +129,39 @@ function_object_t* create_function_object(object_root_t* root) {
     return obj;
 }
 
-native_object_t* create_native_object(object_root_t* root, const char* name, size_t arity, native_fn_t fn) {
+closure_object_t* create_closure_object(object_root_t* root, const function_object_t* function) {
     assert(root);
-    assert(fn);
+    assert(function);
 
-    native_object_t* obj = (native_object_t*)create_object(root, sizeof(native_object_t), OBJECT_TYPE_NATIVE);
+    // allocate before obj-alloc to prevent GC from seeing it.
+    upvalue_object_t** upvalues = NULL;
+    if (function->upvalue_count > 0) {
+        upvalues = ALLOC_BY_COUNT(upvalue_object_t*, function->upvalue_count);
+        assert(upvalues);
+        memset(upvalues, 0, sizeof(upvalue_object_t*) * function->upvalue_count);
+
+    }
+
+    closure_object_t* obj = (closure_object_t*)create_object(root, sizeof(closure_object_t), OBJECT_TYPE_CLOSURE);
     assert(obj);
 
-    obj->name = name; // ptr to rodata
-    obj->arity = arity;
-    obj->fn = fn;
+    obj->function = function;
+    obj->upvalues = upvalues;
+    obj->upvalue_count = function->upvalue_count;
+
+    return obj;
+}
+
+upvalue_object_t* create_upvalue_object(object_root_t* root, value_t* target) {
+    assert(root);
+    assert(target);
+
+    upvalue_object_t* obj = (upvalue_object_t*)create_object(root, sizeof(upvalue_object_t), OBJECT_TYPE_UPVALUE);
+    assert(obj);
+
+    obj->target = target;
+    obj->closed = NIL_VALUE();
+    obj->next = NULL;
 
     return obj;
 }
@@ -131,31 +171,45 @@ static void free_object(object_t* obj) {
 
     switch (obj->type) {
         case OBJECT_TYPE_STRING: {
-            string_object_t *string = (string_object_t*)obj;
+            string_object_t* const string = (string_object_t*)obj;
             FREE_BY_SIZE(string, sizeof(string_object_t) + string->length + 1);
             break;
         }
-
-        case OBJECT_TYPE_FUNCTION: {
-            function_object_t* function = (function_object_t*)obj;
-            chunk_free(&function->chunk);
-            // function->name has independant lifetime
-            // if (function->name) {
-            //     free_object((object_t*)function->name);
-            // }
-            FREE_BY_COUNT(function_object_t, function, 1);
-            break;
-        }
-
+        
         case OBJECT_TYPE_NATIVE: {
-            native_object_t* native = (native_object_t*)obj;
+            native_object_t* const native = (native_object_t*)obj;
             FREE_BY_COUNT(native_object_t, native, 1);
             break;
         }
 
-        default:
+        case OBJECT_TYPE_FUNCTION: {
+            function_object_t* const function = (function_object_t*)obj;
+            chunk_free(&function->chunk);
+            // Note: function->name has independant lifetime
+            FREE_BY_COUNT(function_object_t, function, 1);
+            break;
+        }
+        
+        case OBJECT_TYPE_CLOSURE: {
+            closure_object_t* const closure = (closure_object_t*)obj;
+            if (closure->upvalues) {
+                FREE_BY_COUNT(upvalue_object_t*, closure->upvalues, closure->upvalue_count);
+            }
+            FREE_BY_COUNT(closure_object_t, closure, 1);
+            break;
+        }
+
+        case OBJECT_TYPE_UPVALUE: {
+            upvalue_object_t* const upvalue = (upvalue_object_t*)obj;
+            // ...
+            FREE_BY_COUNT(upvalue_object_t, upvalue, 1);
+            break;
+        }
+
+        default: {
             assert(!"Missing case in free_object");
             break;
+        }
     }
 }
 
@@ -168,23 +222,33 @@ uint32_t hash_object(value_t value) {
             return string->hash;
         }
 
-        case OBJECT_TYPE_FUNCTION: {
-            const function_object_t* const function = AS_FUNCTION(value);
-            return function->name->hash;
-        }
-
         case OBJECT_TYPE_NATIVE: {
             const native_object_t* const native = AS_NATIVE(value);
             const uint64_t addr = (uint64_t)native->fn;
             return (uint32_t)addr;
         }
 
+        case OBJECT_TYPE_FUNCTION: {
+            const function_object_t* const function = AS_FUNCTION(value);
+            return function->name->hash;
+        }
+
+        case OBJECT_TYPE_CLOSURE: {
+            const closure_object_t* const closure = AS_CLOSURE(value);
+            return closure->function->name->hash;
+        }
+
+        case OBJECT_TYPE_UPVALUE: {
+            return 123;
+        }
+
         // TODO for later:
         // maybe use GetHashCode()/Equals() approach from .NET so any user-defined object can be used as key in a hashmap?
 
-        default:
+        default: {
             assert(!"Missing case in hash_object");
             return 0;
+        }
     }
 }
 
@@ -234,6 +298,16 @@ void print_object(value_t value) {
             //printf(" hash=%u", string->hash);
             break;
         }
+        
+        case OBJECT_TYPE_NATIVE: {
+            const native_object_t* const native = AS_NATIVE(value);
+            if (native->name) {
+                printf("<native fn %s>", native->name);
+            } else {
+                printf("<native fn>");
+            }
+            break;
+        }
 
         case OBJECT_TYPE_FUNCTION: {
             const function_object_t* const function = AS_FUNCTION(value);
@@ -245,19 +319,27 @@ void print_object(value_t value) {
             break;
         }
 
-        case OBJECT_TYPE_NATIVE: {
-            const native_object_t* const native = AS_NATIVE(value);
-            if (native->name) {
-                printf("<native fn %s>", native->name);
+        case OBJECT_TYPE_CLOSURE: {
+            const closure_object_t* const closure = AS_CLOSURE(value);
+            if (closure->function->name) {
+                printf("<fn %s>", closure->function->name->chars);
+                //printf("<closure %s>", closure->function->name->chars);
             } else {
-                printf("<native fn>");
+                printf("<script>");
+                //printf("<script closure>");
             }
             break;
         }
 
-        default:
+        case OBJECT_TYPE_UPVALUE: {
+            printf("upvalue");
+            break;
+        }
+
+        default: {
             assert(!"Missing case in print_object");
             break;
+        }
     }
 }
 
@@ -272,16 +354,6 @@ void print_object_to_buffer(char* buffer, size_t max_length, value_t value) {
             break;
         }
 
-        case OBJECT_TYPE_FUNCTION: {
-            const function_object_t* const function = AS_FUNCTION(value);
-            if (function->name) {
-                snprintf(buffer, max_length, "<fn %s>", function->name->chars);
-            } else {
-                snprintf(buffer, max_length, "<script>");
-            }
-            break;
-        }
-
         case OBJECT_TYPE_NATIVE: {
             const native_object_t* const native = AS_NATIVE(value);
             if (native->name) {
@@ -292,9 +364,37 @@ void print_object_to_buffer(char* buffer, size_t max_length, value_t value) {
             break;
         }
 
-        default:
+        case OBJECT_TYPE_FUNCTION: {
+            const function_object_t* const function = AS_FUNCTION(value);
+            if (function->name) {
+                snprintf(buffer, max_length, "<fn %s>", function->name->chars);
+            } else {
+                snprintf(buffer, max_length, "<script>");
+            }
+            break;
+        }
+
+        case OBJECT_TYPE_CLOSURE: {
+            const closure_object_t* const closure = AS_CLOSURE(value);
+            if (closure->function->name) {
+                snprintf(buffer, max_length, "<fn %s>", closure->function->name->chars);
+                //snprintf(buffer, max_length, "<closure %s>", closure->function->name->chars);
+            } else {
+                snprintf(buffer, max_length, "<script>");
+                //snprintf(buffer, max_length, "<script closure>");
+            }
+            break;
+        }
+
+        case OBJECT_TYPE_UPVALUE: {
+            snprintf(buffer, max_length, "upvalue");
+            break;
+        }
+        
+        default: {
             assert(!"Missing case in print_object_to_buffer");
             snprintf(buffer, max_length, "???");
             break;
+        }
     }
 }

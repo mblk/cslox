@@ -13,13 +13,16 @@
 
 //#define COMPILER_PRINT_CALLS
 
-// Max number of locals per chunk
+// Max number of locals per compiler/function
 #define COMPILER_MAX_LOCALS 256
 
-// Max number of nested loops
+// Max number of upvalues per compiler/function
+#define COMPILER_MAX_UPVALUES 256
+
+// Max number of nested loops per compiler/function
 #define COMPILER_MAX_LOOPS 16
 
-// Max number of breaks per loop
+// Max number of breaks per loop per compiler/function
 #define COMPILER_MAX_BREAKS 16
 
 
@@ -28,7 +31,13 @@ typedef struct {
     token_t name; // Note: points to original source, only valid as long as source is valid.
     bool is_const;
     int depth;
+    bool is_captured;
 } local_t;
+
+typedef struct {
+    bool is_local; // local or upvalue
+    size_t index;
+} upvalue_t;
 
 typedef struct {
     size_t continue_addr;
@@ -54,7 +63,11 @@ typedef struct compiler {
 
     // locals
     local_t locals[COMPILER_MAX_LOCALS];
-    int local_count;
+    size_t local_count;
+
+    // upvalues
+    upvalue_t upvalues[COMPILER_MAX_UPVALUES];
+    size_t upvalue_count;
     
     // for break/continue
     loop_t loops[COMPILER_MAX_LOOPS];
@@ -218,15 +231,16 @@ static void begin_compiler(parser_t* parser, compiler_t* compiler, object_root_t
         compiler->function->name = create_string_object(root, parser->previous.start, parser->previous.length);
     }
 
-    // always reserve local 0 for the function-object
+    // always reserve local 0 for the closure-object
     {
         compiler->local_count++;
 
         local_t *const local = compiler->locals;
 
-        local->depth = 0;
-        local->is_const = true;
         local->name = (token_t) { .type = TOKEN_NONE, .start = "", .length = 0, .line = 0 };
+        local->is_const = true;
+        local->depth = 0;
+        local->is_captured = false;
     }
 }
 
@@ -240,12 +254,19 @@ static const function_object_t* end_compiler(parser_t* parser) {
     // remove from list
     parser->current_compiler = compiler->enclosing;
 
-
-    //xxx
     {
+        //printf("== end_compiler: '%s' ==\n", function->name ? function->name->chars : "NULL");
+
         value_t value = OBJECT_VALUE((object_t*)function);
         char buffer[128];
         print_value_to_buffer(buffer, sizeof(buffer), value);
+
+        //value_array_dump(&function->chunk.values);
+
+        // for (size_t i=0; i<compiler->upvalue_count; i++) {
+        //     const upvalue_t* const upvalue = compiler->upvalues + i;
+        //     printf("upvalue %zu: is_local=%d index=%zu\n", i, (int)upvalue->is_local, upvalue->index);
+        // }
 
         disassemble_chunk(&function->chunk, buffer);
     }
@@ -378,6 +399,29 @@ static void emit_const(parser_t* parser, value_t value) {
     }
 }
 
+static void emit_closure(parser_t* parser, const compiler_t* compiler) {
+
+    // Save function object in value-array.
+    const value_t function_value = OBJECT_VALUE((object_t*)compiler->function);
+    const uint32_t function_value_index = chunk_add_value(get_chunk(parser), function_value);
+
+    if (function_value_index < 256) {
+        emit_bytes(parser, OP_CLOSURE, (uint8_t)function_value_index);
+    } else {
+        assert(!"TODO too many values");
+    }
+
+    // upvalue pairs
+    for (size_t i=0; i<compiler->upvalue_count; i++) {
+        const upvalue_t* const upvalue = compiler->upvalues + i;
+
+        assert(upvalue->index < 256); // TODO
+
+        emit_byte(parser, upvalue->is_local ? 1 : 0); // type of index
+        emit_byte(parser, (uint8_t)upvalue->index); // index
+    }
+}
+
 // add to value table and return index.
 static uint32_t emit_string_value(parser_t* parser, const token_t* name) {
     const string_object_t* obj = create_string_object(parser->root, name->start, name->length);
@@ -411,19 +455,35 @@ static void emit_set_global(parser_t* parser, uint32_t name_index) {
     }
 }
 
-static void emit_get_local(parser_t* parser, uint32_t stack_index) {
-    if (stack_index < 256) {
-        emit_bytes(parser, OP_GET_LOCAL, (uint8_t)stack_index);
+static void emit_get_local(parser_t* parser, uint32_t local_index) {
+    if (local_index < 256) {
+        emit_bytes(parser, OP_GET_LOCAL, (uint8_t)local_index);
     } else {
-        emit_byte_and_long(parser, OP_GET_LOCAL_LONG, stack_index);
+        emit_byte_and_long(parser, OP_GET_LOCAL_LONG, local_index);
     }
 }
 
-static void emit_set_local(parser_t* parser, uint32_t stack_index) {
-    if (stack_index < 256) {
-        emit_bytes(parser, OP_SET_LOCAL, (uint8_t)stack_index);
+static void emit_set_local(parser_t* parser, uint32_t local_index) {
+    if (local_index < 256) {
+        emit_bytes(parser, OP_SET_LOCAL, (uint8_t)local_index);
     } else {
-        emit_byte_and_long(parser, OP_SET_LOCAL_LONG, stack_index);
+        emit_byte_and_long(parser, OP_SET_LOCAL_LONG, local_index);
+    }
+}
+
+static void emit_get_upvalue(parser_t* parser, uint32_t upvalue_index) {
+    if (upvalue_index < 256) {
+        emit_bytes(parser, OP_GET_UPVALUE, (uint8_t)upvalue_index);
+    } else {
+        assert(!"TODO");
+    }
+}
+
+static void emit_set_upvalue(parser_t* parser, uint32_t upvalue_index) {
+    if (upvalue_index < 256) {
+        emit_bytes(parser, OP_SET_UPVALUE, (uint8_t)upvalue_index);
+    } else {
+        assert(!"TODO");
     }
 }
 
@@ -562,6 +622,7 @@ static size_t add_local(parser_t* parser, token_t name, bool is_const) {
     local->name = name;
     local->is_const = is_const;
     local->depth = -1; // mark as 'declared but not initialized'
+    local->is_captured = false;
 
     return index;
 }
@@ -571,38 +632,122 @@ static size_t add_hidden_local(parser_t* parser) {
     return add_local(parser, name, true);
 }
 
-static void mark_initialized(parser_t* parser) {
-    compiler_t* const compiler = get_compiler(parser);
+static size_t add_upvalue(parser_t* parser, compiler_t* compiler, bool is_local, size_t index) {
+    // index refers to local or upvalue in directly enclosing compiler
 
-    // Ignore for global variables.
-    if (compiler->scope_depth == 0) {
-        return;
+    // try to reuse existing upvalues
+    for (size_t i=0; i<compiler->upvalue_count; i++) {
+        const upvalue_t* const upvalue = compiler->upvalues + i;
+
+        if (upvalue->index == index && upvalue->is_local == is_local) {
+            return i;
+        }
     }
 
-    assert(compiler->local_count > 0);
+    if (compiler->upvalue_count == COMPILER_MAX_UPVALUES) {
+        error_at_previous(parser, "Too many upvalues in function.");
+        return 0;
+    }
 
-    local_t *const top_local = compiler->locals + compiler->local_count - 1;
-    assert(top_local->depth == -1);
+    // create new upvalue
+    {
+        const size_t upvalue_index = compiler->upvalue_count++;
+        upvalue_t* const upvalue = compiler->upvalues + upvalue_index;
+        upvalue->is_local = is_local;
+        upvalue->index = index;
 
-    top_local->depth = compiler->scope_depth;
+        // mirror count in function-object
+        compiler->function->upvalue_count = compiler->upvalue_count;
+
+        return upvalue_index;
+    }
 }
 
-static int resolve_local(parser_t* parser, const token_t* name, bool* is_const_out) {
-    compiler_t* const compiler = get_compiler(parser);
 
-    for (int i = compiler->local_count-1; i >= 0; i--) {
+
+static bool resolve_local_at_compiler(parser_t* parser, compiler_t* compiler, const token_t* name, size_t* out_local_index, bool* out_is_const) {
+    assert(compiler);
+    assert(name);
+    assert(out_local_index);
+    assert(out_is_const);
+
+    for (size_t i = compiler->local_count-1; ; i--) {
         const local_t* local = compiler->locals + i;
 
         if (identifiers_equal(name, &local->name)) {
             if (local->depth == -1) {
                 error_at_previous(parser, "Can't read local variable in its own initializer.");
             }
-            *is_const_out = local->is_const;
-            return i;
+
+            *out_local_index = i;
+            *out_is_const = local->is_const;
+            return true;
         }
+
+        if (i == 0) break;
     }
 
-    return -1; // not found
+    // not found
+    return false;
+}
+
+static bool resolve_local(parser_t* parser, const token_t* name, size_t* out_local_index, bool* out_is_const) {
+    compiler_t* const compiler = get_compiler(parser);
+    return resolve_local_at_compiler(parser, compiler, name, out_local_index, out_is_const);
+}
+
+static bool resolve_upvalue(parser_t* parser, compiler_t* compiler, const token_t* name, size_t* out_upvalue_index) {
+    // Note: An upvalue can either reference a local in the directly enclosing compiler
+    //                          or reference another upvalue in the directly enclosing compiler.
+    //
+    // This can form an upvalue-chain all the way down to the final local.
+    //
+    // fun main() {
+    //     var a = 123;
+    //     fun outer() {
+    //         fun middle() {
+    //             fun inner() {
+    //                 a = 321;
+    //             }
+    //         }
+    //     }
+    // }
+    //
+    // main: has local 'a'
+    // outer: upvalue to 'a'
+    // middle: upvalue to upvalue of outer
+    // inner: upvalue to upvalue of middle
+
+    // top-level?
+    if (compiler->enclosing == NULL) {
+        return false;
+    }
+
+    bool is_const = false;
+    size_t local_index = 0;
+    if (resolve_local_at_compiler(parser, compiler->enclosing, name, &local_index, &is_const)) {
+        if (is_const) {
+            // TODO
+            assert(!"Upvalue to const not yet supported.");
+        }
+
+        // mark local as captured
+        compiler->enclosing->locals[local_index].is_captured = true;
+
+        // found local in enclosing compiler
+        *out_upvalue_index = add_upvalue(parser, compiler, true, local_index);
+        return true;
+    }
+
+    size_t upvalue_index = 0;
+    if (resolve_upvalue(parser, compiler->enclosing, name, &upvalue_index)) {
+        // found upvalue in enclosing compiler
+        *out_upvalue_index = add_upvalue(parser, compiler, false, upvalue_index);
+        return true;
+    }
+
+    // not found
+    return false;
 }
 
 static void declare_variable(parser_t* parser, bool is_const) {
@@ -645,6 +790,21 @@ static size_t parse_variable_name_and_declare(parser_t* parser, bool is_const, c
     }
 
     return emit_string_value(parser, &parser->previous);
+}
+
+static void mark_initialized(parser_t* parser) {
+    compiler_t* const compiler = get_compiler(parser);
+
+    // Ignore for global variables.
+    if (compiler->scope_depth == 0) {
+        return;
+    }
+
+    // Mark the most recent local as initialized by changed its depth from -1 to the current scope depth.
+    assert(compiler->local_count > 0);
+    local_t *const top_local = compiler->locals + compiler->local_count - 1;
+    assert(top_local->depth == -1);
+    top_local->depth = compiler->scope_depth;
 }
 
 //
@@ -693,26 +853,34 @@ static void variable(parser_t* parser, bool can_assign) {
     // a.b.c = ...
     // depending on whether a '=' is found.
 
-    const token_t* name = &parser->previous;
+    const token_t* const name = &parser->previous;
 
     bool is_const = false;
-    int arg = resolve_local(parser, name, &is_const);
-    if (arg != -1) {
+    size_t local_index = 0;
+    size_t upvalue_index = 0;
+
+    if (resolve_local(parser, name, &local_index, &is_const)) {
         // local variable
-        const uint32_t stack_index = (uint32_t)arg;
         if (can_assign && match(parser, TOKEN_EQUAL)) {
             if (is_const) {
                 error_at_previous(parser, "Can't assign to const variable.");
             }
             expression(parser);
-            emit_set_local(parser, stack_index);
+            emit_set_local(parser, local_index);
         } else {
-            emit_get_local(parser, stack_index);
+            emit_get_local(parser, local_index);
+        }
+    } else if (resolve_upvalue(parser, parser->current_compiler, name, &upvalue_index)) {
+        // upvalue
+        if (can_assign && match(parser, TOKEN_EQUAL)) {
+            expression(parser);
+            emit_set_upvalue(parser, upvalue_index);
+        } else {
+            emit_get_upvalue(parser, upvalue_index);
         }
     } else {
-        // global variable
-        // index of name on value table
-        const uint32_t name_index = emit_string_value(parser, name);
+        // global
+        const uint32_t name_index = emit_string_value(parser, name); // index of name on value table
         if (can_assign && match(parser, TOKEN_EQUAL)) {
             expression(parser);
             emit_set_global(parser, name_index);
@@ -915,7 +1083,12 @@ static void end_scope(parser_t* parser) {
             break;
         }
 
-        emit_byte(parser, OP_POP);
+        if (top_local->is_captured) {
+            emit_byte(parser, OP_CLOSE_UPVALUE);
+        } else {
+            emit_byte(parser, OP_POP);
+        }
+
         compiler->local_count--;
     }
 }
@@ -938,7 +1111,12 @@ static void simulate_end_scope(parser_t* parser, size_t count) {
             break;
         }
 
-        emit_byte(parser, OP_POP);
+        if (top_local->is_captured) {
+            emit_byte(parser, OP_CLOSE_UPVALUE);
+        } else {
+            emit_byte(parser, OP_POP);
+        }
+
         local_count--;
     }
 }
@@ -1072,11 +1250,12 @@ static void function(parser_t* parser) {
     emit_return(parser);
     end_scope(parser);
 
-    const function_object_t* const obj = end_compiler(parser);
+    end_compiler(parser);
 
-    // load function object onto stack.
-    const value_t value = OBJECT_VALUE((object_t*)obj);
-    emit_const(parser, value);
+    // add to function object to value table and
+    // emit opcode to create closure object from it.
+    // the closure object is then left on the stack.
+    emit_closure(parser, &compiler);
 }
 
 static void fun_declaration(parser_t* parser) {
@@ -1563,8 +1742,6 @@ const function_object_t* compile(object_root_t* root, const char* source) {
 
     compiler_t compiler;
     begin_compiler(&parser, &compiler, root, TYPE_SCRIPT);
-
-
 
     if (false) {
         // Expression parser:

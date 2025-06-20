@@ -14,7 +14,7 @@
 #include <string.h>
 #include <time.h>
 
-// #define VM_TRACE_EXECUTION
+//#define VM_TRACE_EXECUTION
 
 #define VM_FRAMES_MAX   256
 
@@ -23,10 +23,10 @@
 
 
 typedef struct {
-    const function_object_t* function;
+    const closure_object_t* closure;
     const uint8_t* ip;
     value_t* base_pointer;
-    // [0] = function object
+    // [0] = closure object
     // [1] = first local
     // [2] = second local
     // ...
@@ -187,6 +187,7 @@ void vm_destroy(vm_t* vm) {
 static void reset_stack(vm_t* vm) {
     (void)vm;
     // TODO
+    // TODO should call this from vm_create() ?
 }
 
 static call_frame_t* get_current_frame(vm_t* vm) {
@@ -200,9 +201,11 @@ static call_frame_t* get_current_frame(vm_t* vm) {
 static const chunk_t* get_current_chunk(vm_t* vm) {
     const call_frame_t* const frame = get_current_frame(vm);
 
-    assert(frame->function);
+    assert(frame);
+    assert(frame->closure);
+    assert(frame->closure->function);
 
-    return &frame->function->chunk;
+    return &frame->closure->function->chunk;
 }
 
 static void runtime_error(vm_t* vm, const char* format, ...) {
@@ -221,7 +224,7 @@ static void runtime_error(vm_t* vm, const char* format, ...) {
     {
         for (size_t frame_index = vm->frame_count - 1 ; ; ) {
             const call_frame_t* const frame = vm->frames + frame_index;
-            const function_object_t* const function = frame->function;
+            const function_object_t* const function = frame->closure->function;
             const chunk_t* const chunk = &function->chunk;
             const size_t offset = frame->ip - chunk->code - 1;
             const uint32_t line = chunk_get_line_for_offset(chunk, offset);
@@ -242,6 +245,8 @@ static void runtime_error(vm_t* vm, const char* format, ...) {
     vm->has_runtime_error = true;
 }
 
+static closure_object_t* create_closure(vm_t* vm, const function_object_t* function);
+static bool call(vm_t* vm, value_t callee, size_t arg_count);
 static run_result_t vm_run(vm_t* vm);
 
 run_result_t vm_run_source(vm_t* vm, const char* source) {
@@ -251,15 +256,16 @@ run_result_t vm_run_source(vm_t* vm, const char* source) {
         return RUN_COMPILE_ERROR;
     }
 
-    // create initial call frame
-    vm->frame_count++;
-    call_frame_t* const frame = vm->frames + vm->frame_count - 1;
-    frame->function = function;
-    frame->ip = function->chunk.code;
-    frame->base_pointer = vm->stack;
+    vm_stack_push(vm, OBJECT_VALUE((object_t*)function)); // prevent GC
 
-    // set function-object as local 0
-    vm_stack_push(vm, OBJECT_VALUE((object_t*)function));
+    // create closure-object from function-object
+    const closure_object_t* const closure = create_closure(vm, function);
+
+    vm_stack_pop(vm);
+    vm_stack_push(vm, OBJECT_VALUE((object_t*)closure)); // local 0
+
+    // create initial call frame
+    call(vm, OBJECT_VALUE((object_t*)closure), 0);
 
     // run
     const run_result_t result = vm_run(vm);
@@ -267,13 +273,6 @@ run_result_t vm_run_source(vm_t* vm, const char* source) {
     // vm_run should return a clean vm
     assert(vm->sp == vm->stack);
     assert(vm->frame_count == 0);
-
-    // drop local 0
-    //vm_stack_pop(vm);
-
-    // drop initial call frame
-    //assert(vm->frame_count == 1);
-    //vm->frame_count--;
 
     return result;
 }
@@ -329,6 +328,66 @@ static void concatenate(vm_t* vm) {
     vm_stack_push(vm, OBJECT_VALUE((object_t*)result));
 }
 
+static closure_object_t* create_closure(vm_t* vm, const function_object_t* function) {
+    assert(function);
+
+    closure_object_t* closure = create_closure_object(&vm->root, function);
+
+    return closure;
+}
+
+static upvalue_object_t* capture_upvalue(vm_t* vm, value_t* target) {
+    assert(target);
+
+    upvalue_object_t* current = vm->root.open_upvalues;
+    upvalue_object_t* previous = NULL;
+
+    // The list starts at the highest target-address - the last entry has the lowest target-address.
+    // Skip all open upvalues with target at higher address
+    while (current && current->target > target) {
+        previous = current;
+        current = current->next;
+    }
+
+    // Found perfect match?
+    if (current && current->target == target) {
+        return current;
+    }
+
+    // Create new upvalue-object.
+    upvalue_object_t* const new_upvalue = create_upvalue_object(&vm->root, target);
+
+    // Insert to list.
+    if (previous == NULL) {
+        vm->root.open_upvalues = new_upvalue;
+    } else {
+        previous->next = new_upvalue;
+    }
+    new_upvalue->next = current; // has lower target-address than new upvalue / or NULL
+
+    return new_upvalue;
+}
+
+static void close_upvalue(vm_t* vm, value_t* target) {
+    assert(target);
+
+    // list starts at highest target-address - has item has lowest target-address.
+    // close all upvalues with higher or equal target-address than the passed address.
+
+    while (vm->root.open_upvalues && 
+           vm->root.open_upvalues->target >= target) {
+
+        upvalue_object_t* const upvalue = vm->root.open_upvalues;
+
+        // close
+        upvalue->closed = *upvalue->target;
+        upvalue->target = &upvalue->closed;
+
+        // remove from list
+        vm->root.open_upvalues = upvalue->next;
+    }
+}
+
 static bool call(vm_t* vm, value_t callee, size_t arg_count) {
 
     //xxx
@@ -339,10 +398,10 @@ static bool call(vm_t* vm, value_t callee, size_t arg_count) {
 
     if (IS_OBJECT(callee)) {
         switch (OBJECT_TYPE(callee)) {
-            case OBJECT_TYPE_FUNCTION: {
-                const function_object_t* const function = AS_FUNCTION(callee);
 
-                // TODO make function, use for initial call as well
+            case OBJECT_TYPE_CLOSURE: {
+                const closure_object_t* const closure = AS_CLOSURE(callee);
+                const function_object_t* const function = closure->function;
 
                 if (function->arity != arg_count) {
                     runtime_error(vm, "Expected %zu arguments but got %zu.", function->arity, arg_count);
@@ -357,13 +416,11 @@ static bool call(vm_t* vm, value_t callee, size_t arg_count) {
                 vm->frame_count++;
                 call_frame_t* const frame = vm->frames + vm->frame_count - 1;
 
-                frame->function = function;
+                frame->closure = closure;
                 frame->ip = function->chunk.code;
+                frame->base_pointer = vm->sp - arg_count - 1; // point to: [closure-obj] [arg1] [arg2] ...
 
-                // point to: [fun-obj] [arg1] [arg2] ...
-                frame->base_pointer = vm->sp - arg_count - 1;
-
-                assert(IS_FUNCTION(frame->base_pointer[0]));
+                assert(IS_CLOSURE(frame->base_pointer[0]));
 
                 return true;
             }
@@ -385,7 +442,7 @@ static bool call(vm_t* vm, value_t callee, size_t arg_count) {
                     return false;
                 }
 
-                // drop function-obj and args
+                // drop closure-obj and args
                 vm->sp -= arg_count + 1;
 
                 // leave return value on stack
@@ -449,10 +506,11 @@ static run_result_t vm_run(vm_t* vm) {
 
     // Note: storing commonly used pointers in local variables for faster access, must be manually updated (OP_CALL, OP_RETURN).
     call_frame_t* frame = vm->frames + vm->frame_count - 1;
-    const value_t* values = frame->function->chunk.values.values;
+    const value_t* values = frame->closure->function->chunk.values.values;
     register const uint8_t* ip = frame->ip;
 
-    assert(frame->function);
+    assert(frame->closure);
+    assert(frame->closure->function);
     assert(frame->ip);
     assert(frame->base_pointer);
 
@@ -539,12 +597,12 @@ static run_result_t vm_run(vm_t* vm) {
     for(;;) {
         #ifdef VM_TRACE_EXECUTION
         {
-            //assert((void*)vm->chunk > (void*)0x100); // no-one overwrote the pointer with garbage
-
             printf("\n");
             vm_stack_dump(vm);
             printf("Next: ");
-            disassemble_instruction(&frame->function->chunk, (size_t)(frame->ip - frame->function->chunk.code));
+
+            const chunk_t* const chunk = &frame->closure->function->chunk;
+            disassemble_instruction(chunk, (size_t)(frame->ip - chunk->code));
         }
         #endif
 
@@ -650,6 +708,23 @@ static run_result_t vm_run(vm_t* vm) {
                 break;
             }
 
+            case OP_GET_UPVALUE: {
+                const uint8_t upvalue_index = READ_BYTE();
+                assert(upvalue_index < frame->closure->upvalue_count);
+
+                const value_t value = *(frame->closure->upvalues[upvalue_index]->target);
+                PUSH(value);
+                break;
+            }
+
+            case OP_SET_UPVALUE: {
+                const uint8_t upvalue_index = READ_BYTE();
+                assert(upvalue_index < frame->closure->upvalue_count);
+
+                *(frame->closure->upvalues[upvalue_index]->target) = PEEK(0);
+                break;
+            }
+
             case OP_JUMP: {
                 const int16_t offset = READ_INT16();
                 ip += offset;
@@ -673,7 +748,7 @@ static run_result_t vm_run(vm_t* vm) {
             case OP_POP: POP(); break;
 
             case OP_CALL: {
-                // Stack: ... function-obj arg1 arg2 arg3
+                // Stack: ... closure-obj arg1 arg2 arg3
 
                 const size_t arg_count = READ_BYTE();
                 const value_t callee = PEEK(arg_count);
@@ -686,23 +761,26 @@ static run_result_t vm_run(vm_t* vm) {
 
                 // refresh cached current frame
                 frame = vm->frames + vm->frame_count - 1;
-                values = frame->function->chunk.values.values;
+                values = frame->closure->function->chunk.values.values;
                 ip = frame->ip;
                 break;
             }
 
             case OP_RETURN: {
-                // Stack before: ... function-obj arg1 arg2 arg3 ... return-value
+                // Stack before: ... closure-obj arg1 arg2 arg3 ... return-value
                 // Stack after : ... return-value
 
                 const value_t return_value = POP();
+
+                // close all open upvalues in the frame we are dropping
+                close_upvalue(vm, frame->base_pointer);
 
                 // drop top frame
                 vm->frame_count--;
 
                 // exit vm?
                 if (vm->frame_count == 0) {
-                    POP(); // drop function-obj
+                    POP(); // drop closure-obj
                     return RUN_OK;
                 }
 
@@ -713,9 +791,40 @@ static run_result_t vm_run(vm_t* vm) {
 
                 // refresh cached current frame
                 frame = vm->frames + vm->frame_count - 1;
-                values = frame->function->chunk.values.values;
+                values = frame->closure->function->chunk.values.values;
                 ip = frame->ip;
 
+                break;
+            }
+
+            case OP_CLOSURE: {
+                // get function from value-array
+                const value_t function_value = READ_CONST();
+                assert(IS_FUNCTION(function_value));
+                const function_object_t* const function = AS_FUNCTION(function_value);
+
+                // create closure-object
+                closure_object_t* const closure = create_closure(vm, function);
+                PUSH(OBJECT_VALUE((object_t*)closure));
+
+                // ...
+                for (size_t i=0; i<function->upvalue_count; i++) {
+                    const uint8_t is_local = READ_BYTE();
+                    const uint8_t index = READ_BYTE();
+
+                    if (is_local) {
+                        closure->upvalues[i] = capture_upvalue(vm, frame->base_pointer + index);
+                    } else {
+                        closure->upvalues[i] = frame->closure->upvalues[index];
+                    }
+                }
+
+                break;
+            }
+
+            case OP_CLOSE_UPVALUE: {
+                close_upvalue(vm, vm->sp - 1);
+                POP();
                 break;
             }
 

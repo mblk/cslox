@@ -55,7 +55,8 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Functions and calls
     - [ ] Anonymous functions
     - [x] Native functions
-    - [ ] Closures and upvalues
+    - [x] Closures and upvalues
+    - [ ] Garbage collector
     - [ ] ...
 
 ## Building / Running
