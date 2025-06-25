@@ -2,7 +2,7 @@
 
 public record TestDefinition(IReadOnlyList<TestCase> TestCases);
 
-public record TestCase(string Group, string Name, TestCaseType Type = TestCaseType.Running);
+public record TestCase(string Group, string Name, TestCaseType Type);
 
 public enum TestCaseType
 {
@@ -13,7 +13,7 @@ public enum TestCaseType
 
 public static class TestDefinitionProvider
 {
-    private static readonly (string, string, TestCaseType)[] _testCases2 =
+    private static readonly (string, string, TestCaseType)[] _benchmarkTests =
     [
         ("benchmark", "binary_trees", TestCaseType.Running),
         ("benchmark", "equality", TestCaseType.Running),
@@ -28,7 +28,7 @@ public static class TestDefinitionProvider
         ("benchmark", "zoo_batch", TestCaseType.Running),
     ];
 
-    private static readonly (string, string, TestCaseType)[] _testCases =
+    private static readonly (string, string, TestCaseType)[] _csloxTests =
     [
         ("", "empty_file", TestCaseType.Running),
         ("", "precedence", TestCaseType.Running),
@@ -333,9 +333,325 @@ public static class TestDefinitionProvider
         
     ];
 
-    public static TestDefinition GetTestDefinition()
+    private static readonly (string, string, TestCaseType)[] _cloxTests =
+    [
+        ("", "empty_file", TestCaseType.Running),
+        ("", "precedence", TestCaseType.Running),
+        ("", "unexpected_character", TestCaseType.Running),
+
+        ("assignment", "associativity", TestCaseType.Running),
+        ("assignment", "global", TestCaseType.Running),
+        ("assignment", "grouping", TestCaseType.Running),
+        ("assignment", "infix_operator", TestCaseType.Running),
+        ("assignment", "local", TestCaseType.Running),
+        ("assignment", "prefix_operator", TestCaseType.Running),
+        ("assignment", "syntax", TestCaseType.Running),
+        //("assignment", "to_this", TestCaseType.Running),
+        ("assignment", "undefined", TestCaseType.Running),
+
+        //("benchmark", "binary_trees", TestCaseType.Running),
+        //("benchmark", "equality", TestCaseType.Running),
+        //("benchmark", "fib", TestCaseType.Running),
+        //("benchmark", "instantiation", TestCaseType.Running),
+        //("benchmark", "invocation", TestCaseType.Running),
+        //("benchmark", "method_call", TestCaseType.Running),
+        //("benchmark", "properties", TestCaseType.Running),
+        //("benchmark", "string_equality", TestCaseType.Running),
+        //("benchmark", "trees", TestCaseType.Running),
+        //("benchmark", "zoo", TestCaseType.Running),
+        //("benchmark", "zoo_batch", TestCaseType.Running),
+
+        ("block", "empty", TestCaseType.Running),
+        ("block", "scope", TestCaseType.Running),
+
+        ("bool", "equality", TestCaseType.Running),
+        ("bool", "not", TestCaseType.Running),
+
+        ("call", "bool", TestCaseType.Running),
+        ("call", "nil", TestCaseType.Running),
+        ("call", "num", TestCaseType.Running),
+        //("call", "object", TestCaseType.Running),
+        ("call", "string", TestCaseType.Running),
+
+        // ("class", "empty", TestCaseType.Running),
+        // ("class", "inherited_method", TestCaseType.Running),
+        // ("class", "inherit_self", TestCaseType.Running),
+        // ("class", "local_inherit_other", TestCaseType.Running),
+        // ("class", "local_inherit_self", TestCaseType.Running),
+        // ("class", "local_reference_self", TestCaseType.Running),
+        // ("class", "reference_self", TestCaseType.Running),
+
+        ("closure", "assign_to_closure", TestCaseType.Running),
+        ("closure", "assign_to_shadowed_later", TestCaseType.Running),
+        ("closure", "closed_closure_in_function", TestCaseType.Running),
+        ("closure", "close_over_function_parameter", TestCaseType.Running),
+        ("closure", "close_over_later_variable", TestCaseType.Running),
+        //("closure", "close_over_method_parameter", TestCaseType.Running),
+        ("closure", "nested_closure", TestCaseType.Running),
+        ("closure", "open_closure_in_function", TestCaseType.Running),
+        ("closure", "reference_closure_multiple_times", TestCaseType.Running),
+        ("closure", "reuse_closure_slot", TestCaseType.Running),
+        ("closure", "shadow_closure_with_local", TestCaseType.Running),
+        ("closure", "unused_closure", TestCaseType.Running),
+        ("closure", "unused_later_closure", TestCaseType.Running),
+
+        ("comments", "line_at_eof", TestCaseType.Running),
+        ("comments", "only_line_comment", TestCaseType.Running),
+        ("comments", "only_line_comment_and_line", TestCaseType.Running),
+        ("comments", "unicode", TestCaseType.Running),
+
+        // ("constructor", "arguments", TestCaseType.Running),
+        // ("constructor", "call_init_early_return", TestCaseType.Running),
+        // ("constructor", "call_init_explicitly", TestCaseType.Running),
+        // ("constructor", "default", TestCaseType.Running),
+        // ("constructor", "default_arguments", TestCaseType.Running),
+        // ("constructor", "early_return", TestCaseType.Running),
+        // ("constructor", "extra_arguments", TestCaseType.Running),
+        // ("constructor", "init_not_method", TestCaseType.Running),
+        // ("constructor", "missing_arguments", TestCaseType.Running),
+        // ("constructor", "return_in_nested_function", TestCaseType.Running),
+        // ("constructor", "return_value", TestCaseType.Running),
+
+        //("expressions", "evaluate", TestCaseType.Running),
+        //("expressions", "parse", TestCaseType.Running),
+
+        // ("field", "call_function_field", TestCaseType.Running),
+        // ("field", "call_nonfunction_field", TestCaseType.Running),
+        // ("field", "get_and_set_method", TestCaseType.Running),
+        // ("field", "get_on_bool", TestCaseType.Running),
+        // ("field", "get_on_class", TestCaseType.Running),
+        // ("field", "get_on_function", TestCaseType.Running),
+        // ("field", "get_on_nil", TestCaseType.Running),
+        // ("field", "get_on_num", TestCaseType.Running),
+        // ("field", "get_on_string", TestCaseType.Running),
+        // ("field", "many", TestCaseType.Running),
+        // ("field", "method", TestCaseType.Running),
+        // ("field", "method_binds_this", TestCaseType.Running),
+        // ("field", "on_instance", TestCaseType.Running),
+        // ("field", "set_evaluation_order", TestCaseType.Running),
+        // ("field", "set_on_bool", TestCaseType.Running),
+        // ("field", "set_on_class", TestCaseType.Running),
+        // ("field", "set_on_function", TestCaseType.Running),
+        // ("field", "set_on_nil", TestCaseType.Running),
+        // ("field", "set_on_num", TestCaseType.Running),
+        // ("field", "set_on_string", TestCaseType.Running),
+        // ("field", "undefined", TestCaseType.Running),
+
+        //("for", "class_in_body", TestCaseType.Running),
+        ("for", "closure_in_body", TestCaseType.Running),
+        ("for", "fun_in_body", TestCaseType.Running),
+        ("for", "return_closure", TestCaseType.Running),
+        ("for", "return_inside", TestCaseType.Running),
+        ("for", "scope", TestCaseType.Running),
+        ("for", "statement_condition", TestCaseType.Running),
+        ("for", "statement_increment", TestCaseType.Running),
+        ("for", "statement_initializer", TestCaseType.Running),
+        ("for", "syntax", TestCaseType.Running),
+        ("for", "var_in_body", TestCaseType.Running),
+
+        ("function", "body_must_be_block", TestCaseType.Running),
+        ("function", "empty_body", TestCaseType.Running),
+        ("function", "extra_arguments", TestCaseType.Running),
+        ("function", "local_mutual_recursion", TestCaseType.Running),
+        ("function", "local_recursion", TestCaseType.Running),
+        ("function", "missing_arguments", TestCaseType.Running),
+        ("function", "missing_comma_in_parameters", TestCaseType.Running),
+        ("function", "mutual_recursion", TestCaseType.Running),
+        ("function", "nested_call_with_arguments", TestCaseType.Running),
+        ("function", "parameters", TestCaseType.Running),
+        ("function", "print", TestCaseType.Running),
+        ("function", "recursion", TestCaseType.Running),
+        ("function", "too_many_arguments", TestCaseType.Running),
+        ("function", "too_many_parameters", TestCaseType.Running),
+
+        //("function", "lambda", TestCaseType.Running), // Custom test
+
+        // ("if", "class_in_else", TestCaseType.Running),
+        // ("if", "class_in_then", TestCaseType.Running),
+        ("if", "dangling_else", TestCaseType.Running),
+        ("if", "else", TestCaseType.Running),
+        ("if", "fun_in_else", TestCaseType.Running),
+        ("if", "fun_in_then", TestCaseType.Running),
+        ("if", "if", TestCaseType.Running),
+        ("if", "truth", TestCaseType.Running),
+        ("if", "var_in_else", TestCaseType.Running),
+        ("if", "var_in_then", TestCaseType.Running),
+
+        // ("inheritance", "constructor", TestCaseType.Running),
+        // ("inheritance", "inherit_from_function", TestCaseType.Running),
+        // ("inheritance", "inherit_from_nil", TestCaseType.Running),
+        // ("inheritance", "inherit_from_number", TestCaseType.Running),
+        // ("inheritance", "inherit_methods", TestCaseType.Running),
+        // ("inheritance", "parenthesized_superclass", TestCaseType.Running),
+        // ("inheritance", "set_fields_from_base_class", TestCaseType.Running),
+
+        //("limit", "loop_too_large", TestCaseType.Running),
+        //("limit", "no_reuse_constants", TestCaseType.Running),
+        //("limit", "stack_overflow", TestCaseType.Running),
+        //("limit", "too_many_constants", TestCaseType.Running),
+        //("limit", "too_many_locals", TestCaseType.Running),
+        //("limit", "too_many_upvalues", TestCaseType.Running),
+
+        ("logical_operator", "and", TestCaseType.Running),
+        ("logical_operator", "and_truth", TestCaseType.Running),
+        ("logical_operator", "or", TestCaseType.Running),
+        ("logical_operator", "or_truth", TestCaseType.Running),
+
+        // ("method", "arity", TestCaseType.Running),
+        // ("method", "empty_block", TestCaseType.Running),
+        // ("method", "extra_arguments", TestCaseType.Running),
+        // ("method", "missing_arguments", TestCaseType.Running),
+        // ("method", "not_found", TestCaseType.Running),
+        // ("method", "print_bound_method", TestCaseType.Running),
+        // ("method", "refer_to_name", TestCaseType.Running),
+        // ("method", "too_many_arguments", TestCaseType.Running),
+        // ("method", "too_many_parameters", TestCaseType.Running),
+
+        ("nil", "literal", TestCaseType.Running),
+
+        //("number", "decimal_point_at_eof", TestCaseType.Running),
+        ("number", "leading_dot", TestCaseType.Running),
+        ("number", "literals", TestCaseType.Running),
+        ("number", "nan_equality", TestCaseType.Running),
+        //("number", "trailing_dot", TestCaseType.Running),
+
+        ("operator", "add", TestCaseType.Running),
+        ("operator", "add_bool_nil", TestCaseType.Running),
+        ("operator", "add_bool_num", TestCaseType.Running),
+        ("operator", "add_bool_string", TestCaseType.Running),
+        ("operator", "add_nil_nil", TestCaseType.Running),
+        ("operator", "add_num_nil", TestCaseType.Running),
+        ("operator", "add_string_nil", TestCaseType.Running),
+        ("operator", "comparison", TestCaseType.Running),
+        ("operator", "divide", TestCaseType.Running),
+        ("operator", "divide_nonnum_num", TestCaseType.Running),
+        ("operator", "divide_num_nonnum", TestCaseType.Running),
+        ("operator", "equals", TestCaseType.Running),
+        //("operator", "equals_class", TestCaseType.Running),
+        //("operator", "equals_method", TestCaseType.Running),
+        ("operator", "greater_nonnum_num", TestCaseType.Running),
+        ("operator", "greater_num_nonnum", TestCaseType.Running),
+        ("operator", "greater_or_equal_nonnum_num", TestCaseType.Running),
+        ("operator", "greater_or_equal_num_nonnum", TestCaseType.Running),
+        ("operator", "less_nonnum_num", TestCaseType.Running),
+        ("operator", "less_num_nonnum", TestCaseType.Running),
+        ("operator", "less_or_equal_nonnum_num", TestCaseType.Running),
+        ("operator", "less_or_equal_num_nonnum", TestCaseType.Running),
+        ("operator", "multiply", TestCaseType.Running),
+        ("operator", "multiply_nonnum_num", TestCaseType.Running),
+        ("operator", "multiply_num_nonnum", TestCaseType.Running),
+        ("operator", "negate", TestCaseType.Running),
+        ("operator", "negate_nonnum", TestCaseType.Running),
+        ("operator", "not", TestCaseType.Running),
+        //("operator", "not_class", TestCaseType.Running),
+        ("operator", "not_equals", TestCaseType.Running),
+        ("operator", "subtract", TestCaseType.Running),
+        ("operator", "subtract_nonnum_num", TestCaseType.Running),
+        ("operator", "subtract_num_nonnum", TestCaseType.Running),
+
+        ("print", "missing_argument", TestCaseType.Running),
+
+        //("regression", "394", TestCaseType.Running),
+        ("regression", "40", TestCaseType.Running),
+
+        ("return", "after_else", TestCaseType.Running),
+        ("return", "after_if", TestCaseType.Running),
+        ("return", "after_while", TestCaseType.Running),
+        ("return", "at_top_level", TestCaseType.Running),
+        ("return", "in_function", TestCaseType.Running),
+        //("return", "in_method", TestCaseType.Running),
+        ("return", "return_nil_if_no_value", TestCaseType.Running),
+
+        // ("scanning", "identifiers", TestCaseType.Scanning),
+        // ("scanning", "keywords", TestCaseType.Scanning),
+        // ("scanning", "numbers", TestCaseType.Scanning),
+        // ("scanning", "punctuators", TestCaseType.Scanning),
+        // ("scanning", "strings", TestCaseType.Scanning),
+        // ("scanning", "whitespace", TestCaseType.Scanning),
+
+        ("string", "error_after_multiline", TestCaseType.Running),
+        ("string", "literals", TestCaseType.Running),
+        ("string", "multiline", TestCaseType.Running),
+        ("string", "unterminated", TestCaseType.Running),
+
+        // ("super", "bound_method", TestCaseType.Running),
+        // ("super", "call_other_method", TestCaseType.Running),
+        // ("super", "call_same_method", TestCaseType.Running),
+        // ("super", "closure", TestCaseType.Running),
+        // ("super", "constructor", TestCaseType.Running),
+        // ("super", "extra_arguments", TestCaseType.Running),
+        // ("super", "indirectly_inherited", TestCaseType.Running),
+        // ("super", "missing_arguments", TestCaseType.Running),
+        // ("super", "no_superclass_bind", TestCaseType.Running),
+        // ("super", "no_superclass_call", TestCaseType.Running),
+        // ("super", "no_superclass_method", TestCaseType.Running),
+        // ("super", "parenthesized", TestCaseType.Running),
+        // ("super", "reassign_superclass", TestCaseType.Running),
+        // ("super", "super_at_top_level", TestCaseType.Running),
+        // ("super", "super_in_closure_in_inherited_method", TestCaseType.Running),
+        // ("super", "super_in_inherited_method", TestCaseType.Running),
+        // ("super", "super_in_top_level_function", TestCaseType.Running),
+        // ("super", "super_without_dot", TestCaseType.Running),
+        // ("super", "super_without_name", TestCaseType.Running),
+        // ("super", "this_in_superclass_method", TestCaseType.Running),
+
+        // ("this", "closure", TestCaseType.Running),
+        // ("this", "nested_class", TestCaseType.Running),
+        // ("this", "nested_closure", TestCaseType.Running),
+        // ("this", "this_at_top_level", TestCaseType.Running),
+        // ("this", "this_in_method", TestCaseType.Running),
+        // ("this", "this_in_top_level_function", TestCaseType.Running),
+
+        ("variable", "collide_with_parameter", TestCaseType.Running),
+        ("variable", "duplicate_local", TestCaseType.Running),
+        ("variable", "duplicate_parameter", TestCaseType.Running),
+        ("variable", "early_bound", TestCaseType.Running),
+        ("variable", "in_middle_of_block", TestCaseType.Running),
+        ("variable", "in_nested_block", TestCaseType.Running),
+        //("variable", "local_from_method", TestCaseType.Running),
+        ("variable", "redeclare_global", TestCaseType.Running),
+        ("variable", "redefine_global", TestCaseType.Running),
+        ("variable", "scope_reuse_in_different_blocks", TestCaseType.Running),
+        ("variable", "shadow_and_local", TestCaseType.Running),
+        ("variable", "shadow_global", TestCaseType.Running),
+        ("variable", "shadow_local", TestCaseType.Running),
+        ("variable", "undefined_global", TestCaseType.Running),
+        ("variable", "undefined_local", TestCaseType.Running),
+        ("variable", "uninitialized", TestCaseType.Running),
+        ("variable", "unreached_undefined", TestCaseType.Running),
+        ("variable", "use_false_as_var", TestCaseType.Running),
+        ("variable", "use_global_in_initializer", TestCaseType.Running),
+        ("variable", "use_local_in_initializer", TestCaseType.Running),
+        ("variable", "use_nil_as_var", TestCaseType.Running),
+        ("variable", "use_this_as_var", TestCaseType.Running),
+
+        //("while", "class_in_body", TestCaseType.Running),
+        ("while", "closure_in_body", TestCaseType.Running),
+        ("while", "fun_in_body", TestCaseType.Running),
+        ("while", "return_closure", TestCaseType.Running),
+        ("while", "return_inside", TestCaseType.Running),
+        ("while", "syntax", TestCaseType.Running),
+        ("while", "var_in_body", TestCaseType.Running),
+
+        ("while", "break_at_top_level", TestCaseType.Running), // Custom test
+        ("while", "break_continue", TestCaseType.Running),     // Custom test
+        ("while", "break_outside_loop", TestCaseType.Running), // Custom test
+
+        // TODO add tests for "break n / continue n"
+        // TODO add break/continue tests in for-loops
+        
+    ];
+
+    public static TestDefinition GetCloxTestDefinition()
     {
-        var testCases = _testCases.Select(x => new TestCase(x.Item1, x.Item2, x.Item3)).ToArray();
+        var testCases = _cloxTests.Select(x => new TestCase(x.Item1, x.Item2, x.Item3)).ToArray();
+
+        return new TestDefinition(testCases);
+    }
+
+    public static TestDefinition GetCsloxTestDefinition()
+    {
+        var testCases = _csloxTests.Select(x => new TestCase(x.Item1, x.Item2, x.Item3)).ToArray();
 
         return new TestDefinition(testCases);
     }

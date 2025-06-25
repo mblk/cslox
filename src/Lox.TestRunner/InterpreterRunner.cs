@@ -4,17 +4,20 @@ namespace Lox.TestRunner;
 
 public class InterpreterRunner
 {
-    public InterpreterRunner()
+    private readonly FileInfo _testeeFile;
+
+    public InterpreterRunner(FileInfo testeeFile)
     {
+        if (!testeeFile.Exists) throw new ArgumentException($"Testee file does not exist: {testeeFile.FullName}");
+
+        _testeeFile = testeeFile;
     }
 
     public (IReadOnlyList<string>, int) Run(string fileName, string args)
     {
-        var pathToLox = @"C:\workspace\repos\cslox\src\Lox\bin\Debug\net9.0\Lox.exe";
-
         var startInfo = new ProcessStartInfo()
         {
-            FileName = pathToLox,
+            FileName = _testeeFile.FullName,
             Arguments = $"{args} \"{fileName}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -34,6 +37,7 @@ public class InterpreterRunner
         while (!process.StandardOutput.EndOfStream)
         {
             var line = process.StandardOutput.ReadLine();
+            if (ShouldIgnore(line)) continue;
             if (String.IsNullOrEmpty(line)) continue;
 
             outputLines.Add(line);
@@ -42,9 +46,10 @@ public class InterpreterRunner
         while (!process.StandardError.EndOfStream)
         {
             var line = process.StandardError.ReadLine();
+            if (ShouldIgnore(line)) continue;
             if (String.IsNullOrEmpty(line)) continue;
 
-            outputLines.Add($"Err: {line}");
+            outputLines.Add(line);
         }
 
         process.WaitForExit();
@@ -52,5 +57,27 @@ public class InterpreterRunner
         //Console.WriteLine($"Exit code: {process.ExitCode}");
 
         return (outputLines, process.ExitCode);
+    }
+
+    private static bool ShouldIgnore(string? line)
+    {
+        if (String.IsNullOrWhiteSpace(line)) return true;
+
+        // part of stack trace:
+        // RuntimeError: ...
+        // [line 123] in ...
+        // [line 123] in ...
+        // [line 123] in ...
+
+        var i1 = line.IndexOf('[');
+        var i2 = line.IndexOf("] in ");
+
+        if (i1 != -1 && i2 != -2 && i1 < i2)
+        {
+            //Console.WriteLine($"Ignoring line: {line}");
+            return true;
+        }
+
+        return false;
     }
 }

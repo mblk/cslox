@@ -39,10 +39,12 @@ public partial class TestFileParser
 
 
     private readonly string _fileName;
+    private readonly string _skipLang;
 
-    public TestFileParser(string fileName)
+    public TestFileParser(string fileName, string skipLang)
     {
         _fileName = fileName;
+        _skipLang = skipLang;
     }
 
     public IEnumerable<ExpectedOutput> Parse()
@@ -73,13 +75,10 @@ public partial class TestFileParser
                 var lineGroup = match.Groups[4];
                 var errorGroup = match.Groups[5];
 
-                if (langGroup.Success)
+                if (langGroup.Success && langGroup.Value == _skipLang)
                 {
-                    if (langGroup.Value == "c")
-                    {
-                        //Console.WriteLine($"Skipping: {line}");
-                        continue;
-                    }
+                    //Console.WriteLine($"Skipping: {line}");
+                    continue;
                 }
 
                 var lineNum = lineGroup.Success ? lineGroup.Value : currentLineNum.ToString(); // auto set line if not specified
