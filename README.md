@@ -6,8 +6,9 @@ This repository contains my implementation of the [lox language] following the b
 [lox language]: https://craftinginterpreters.com/the-lox-language.html
 [Bob Nystrom]: https://github.com/munificent
 
-
 ## Status
+
+[![Build and test](https://github.com/mblk/cslox/actions/workflows/dotnet.yml/badge.svg)](https://github.com/mblk/cslox/actions/workflows/dotnet.yml)
 
 - Phase 1: Tree walking interpreter
     - [x] REPL
@@ -44,7 +45,7 @@ This repository contains my implementation of the [lox language] following the b
     - [x] Global variables
     - [x] Block statements + local variables
     - [x] Const local variables
-    - [ ] Test runner (Idea: include in CI-run)
+    - [x] Test runner (Idea: include in CI-run)
     - [x] If statements
     - [x] Logical operators
     - [x] While statements
