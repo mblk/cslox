@@ -23,7 +23,7 @@ uint32_t hash_string(const char* start, size_t length) {
 
 uint32_t hash_bytes(const void* ptr, size_t size) {
     assert(ptr);
-    assert(size);
+    // Size is allowed to be 0
 
     // FNV-1a
     // http://www.isthe.com/chongo/tech/comp/fnv/#FNV-1a
