@@ -1,0 +1,35 @@
+# This workflow will build a .NET project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+
+name: Build and test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build_cslox:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.0.x
+    - name: Restore dependencies
+      run: dotnet restore
+    - name: Build
+      run: dotnet build --no-restore
+    - name: Test
+      run: dotnet test --no-build --verbosity normal
+    - name: Run TestRunner for cslox
+      run: ./src/Lox.TestRunner/bin/Release/net9.0/Lox.TestRunner cslox
+  build_clox:
+    needs: build_cslox
+    runs-on: ubuntu-latest
+    steps:
+    - name: make clox
+      run: cd clox; make BUILD=release
+    - name: Run TestRunner for clox
+      run: ./src/Lox.TestRunner/bin/Release/net9.0/Lox.TestRunner clox
