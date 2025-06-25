@@ -1,0 +1,59 @@
+print "aaa";
+
+for (var i = 0; i < 10; i = i + 1) {
+	if (i == 4) break;
+	print i;
+}
+
+print "bbb";
+
+for (var i = 0; i < 5; i = i + 1) {
+	if (i == 2) continue;
+	print i;
+}
+
+print "ccc";
+
+var j = 0;
+while (j < 10) {
+    j = j + 1;
+    if (j == 5) {
+        break;
+    }
+    print j;
+}
+
+print "ddd";
+
+j = 0;
+while (j < 5) {
+    j = j + 1;
+    if (j == 3) {
+        continue;
+    }
+    print j;
+}
+
+print "eee";
+
+// expect: aaa
+// expect: 0
+// expect: 1
+// expect: 2
+// expect: 3
+// expect: bbb
+// expect: 0
+// expect: 1
+// expect: 3
+// expect: 4
+// expect: ccc
+// expect: 1
+// expect: 2
+// expect: 3
+// expect: 4
+// expect: ddd
+// expect: 1
+// expect: 2
+// expect: 4
+// expect: 5
+// expect: eee
