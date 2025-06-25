@@ -73,14 +73,12 @@ uint32_t hash_value(value_t value) {
     }
 }
 
-
-
 void print_value(value_t value) {
     assert(value.type == VALUE_TYPE_NIL ||
            value.type == VALUE_TYPE_BOOL ||
            value.type == VALUE_TYPE_NUMBER ||
            value.type == VALUE_TYPE_OBJECT);
-    
+
     switch (value.type) {
         case VALUE_TYPE_NIL:
             printf("nil");
@@ -92,8 +90,11 @@ void print_value(value_t value) {
 
         case VALUE_TYPE_NUMBER: {
             const double dbl_value = AS_NUMBER(value);
-            if (ceil(dbl_value) == floor(dbl_value)) {
-                const int64_t int64_value = (int64_t)dbl_value;
+            const int64_t int64_value = (int64_t)dbl_value;
+
+            if (signbit(dbl_value) && dbl_value == 0.0) {
+                printf("-0");
+            } else if (ceil(dbl_value) == floor(dbl_value)) {
                 printf("%" PRId64, int64_value);
             } else {
                 printf("%g", dbl_value);
@@ -132,8 +133,11 @@ void print_value_to_buffer(char* buffer, size_t max_length, value_t value) {
 
         case VALUE_TYPE_NUMBER: {
             const double dbl_value = AS_NUMBER(value);
-            if (ceil(dbl_value) == floor(dbl_value)) {
-                const int64_t int64_value = (int64_t)dbl_value;
+            const int64_t int64_value = (int64_t)dbl_value;
+
+            if (signbit(dbl_value) && dbl_value == 0.0) {
+                snprintf(buffer, max_length, "-0");
+            } else if (ceil(dbl_value) == floor(dbl_value)) {
                 snprintf(buffer, max_length, "%" PRId64, int64_value);
             } else {
                 snprintf(buffer, max_length, "%g", dbl_value);
@@ -146,7 +150,7 @@ void print_value_to_buffer(char* buffer, size_t max_length, value_t value) {
             break;
 
         default:
-            assert(!"Missing case in print_value()");
+            assert(!"Missing case in print_value_to_buffer()");
             snprintf(buffer, max_length, "???");
             break;
     }
