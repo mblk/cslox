@@ -162,13 +162,27 @@ bool value_is_truey(value_t value) {
 
 // Note: Function instead of macro to prevent double-evaluation
 bool value_is_falsey(value_t value) {
-    if (IS_NIL(value)) {
-        return true;
+
+    // not working correctly with -O3 -flto
+    // if (IS_NIL(value)) {
+    //     return true;
+    // }
+    // if (IS_BOOL(value) && AS_BOOL(value) == false) {
+    //     return true;
+    // }
+    // return false;
+
+    // use switch-case to make it "LTO-safe"
+    switch (value.type) {
+        case VALUE_TYPE_NIL:
+            return true;
+
+        case VALUE_TYPE_BOOL:
+            return !value.as.boolean;
+
+        default:
+            return false;
     }
-    if (IS_BOOL(value) && AS_BOOL(value) == false) {
-        return true;
-    }
-    return false;
 }
 
 bool values_equal(value_t a, value_t b) {
