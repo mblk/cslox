@@ -20,7 +20,7 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
-      run: dotnet build --no-restore
+      run: dotnet build --no-restore --configuration Release
     - name: Test
       run: dotnet test --no-build --verbosity normal
     - name: Print pwd
@@ -33,6 +33,10 @@ jobs:
     needs: build_cslox
     runs-on: ubuntu-latest
     steps:
+    - name: Print pwd
+      run: pwd
+    - name: Dump files
+      run: tree .
     - name: make clox
       run: cd clox; make BUILD=release
     - name: Run TestRunner for clox
