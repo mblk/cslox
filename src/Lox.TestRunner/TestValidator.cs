@@ -33,6 +33,12 @@ public class TestValidator
                 Console.WriteLine($"Error:");
                 Console.WriteLine($"  Expected: '{expected.Output}'");
                 Console.WriteLine($"  Actual:   '{actual}'");
+
+                Console.WriteLine($"Full output:");
+                Console.WriteLine($"[start]");
+                foreach (var s in _actualOutput) Console.WriteLine(s);
+                Console.WriteLine($"[end]");
+
                 return false;
             }
         }
