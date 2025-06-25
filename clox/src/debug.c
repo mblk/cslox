@@ -147,8 +147,10 @@ size_t disassemble_instruction(const chunk_t* chunk, size_t offset) {
         case OP_SET_LOCAL:      return byte_instruction(chunk, "OP_SET_LOCAL", offset);
         case OP_SET_LOCAL_LONG: return byte_instruction_long(chunk, "OP_SET_LOCAL_LONG", offset);
 
-        case OP_GET_UPVALUE:    return byte_instruction(chunk, "OP_GET_UPVALUE", offset);
-        case OP_SET_UPVALUE:    return byte_instruction(chunk, "OP_SET_UPVALUE", offset);
+        case OP_GET_UPVALUE:        return byte_instruction(chunk, "OP_GET_UPVALUE", offset);
+        case OP_GET_UPVALUE_LONG:   return byte_instruction_long(chunk, "OP_GET_UPVALUE_LONG", offset);
+        case OP_SET_UPVALUE:        return byte_instruction(chunk, "OP_SET_UPVALUE", offset);
+        case OP_SET_UPVALUE_LONG:   return byte_instruction_long(chunk, "OP_SET_UPVALUE_LONG", offset);
 
         case OP_JUMP:           return jump_instruction(chunk, "OP_JUMP", offset);
         case OP_JUMP_IF_TRUE:   return jump_instruction(chunk, "OP_JUMP_IF_TRUE", offset);

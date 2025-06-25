@@ -5,22 +5,22 @@
 
 #include <stdint.h>
 
-typedef enum {      // args:
+typedef enum {              // args:
     OP_INVALID,
 
-    OP_CONST,       //  8 bit index
-    OP_CONST_LONG,  // 32 bit index
+    OP_CONST,               //  8 bit index
+    OP_CONST_LONG,          // 32 bit index
 
-    OP_NIL,         // -
-    OP_TRUE,        // -
-    OP_FALSE,       // -
+    OP_NIL,                 // -
+    OP_TRUE,                // -
+    OP_FALSE,               // -
 
-    OP_NOT,         // -
-    OP_NEGATE,      // -
+    OP_NOT,                 // -
+    OP_NEGATE,              // -
 
-    OP_EQUAL,       // -
-    OP_GREATER,     // -
-    OP_LESS,        // -
+    OP_EQUAL,               // -
+    OP_GREATER,             // -
+    OP_LESS,                // -
     // direct:
     // a == b
     // a > b
@@ -42,27 +42,29 @@ typedef enum {      // args:
     OP_SET_GLOBAL,          //  8 bit index to value-table for name
     OP_SET_GLOBAL_LONG,     // 32 bit index to value-table for name
 
-    OP_GET_LOCAL,       // 8  bit index to stack
-    OP_GET_LOCAL_LONG,  // 32 bit index to stack
-    OP_SET_LOCAL,       // 8  bit index to stack
-    OP_SET_LOCAL_LONG,  // 32 bit index to stack
+    OP_GET_LOCAL,           // 8  bit index to stack
+    OP_GET_LOCAL_LONG,      // 32 bit index to stack
+    OP_SET_LOCAL,           // 8  bit index to stack
+    OP_SET_LOCAL_LONG,      // 32 bit index to stack
 
-    OP_GET_UPVALUE,     // 8 bit index
-    OP_SET_UPVALUE,     // 9 bit index
+    OP_GET_UPVALUE,         //  8 bit index
+    OP_GET_UPVALUE_LONG,    // 32 bit index
+    OP_SET_UPVALUE,         //  8 bit index
+    OP_SET_UPVALUE_LONG,    // 32 bit index
 
-    OP_JUMP,            // 16 bit signed offset
-    OP_JUMP_IF_TRUE,    // 16 bit signed offset
-    OP_JUMP_IF_FALSE,   // 16 bit signed offset
+    OP_JUMP,                // 16 bit signed offset
+    OP_JUMP_IF_TRUE,        // 16 bit signed offset
+    OP_JUMP_IF_FALSE,       // 16 bit signed offset
     
-    OP_POP,             // -
+    OP_POP,                 // -
 
-    OP_CALL,            // 8 bit argument count
-    OP_RETURN,          // -
+    OP_CALL,                // 8 bit argument count
+    OP_RETURN,              // -
 
-    OP_CLOSURE,         // 8 bit index to value-table for function-object, followed by upvalue-pairs (1 byte type, 1 byte index)
-    OP_CLOSE_UPVALUE,   // -
+    OP_CLOSURE,             // 8 bit index to value-table for function-object, followed by upvalue-pairs (1 byte type, 1 byte index)
+    OP_CLOSE_UPVALUE,       // -
     
-    OP_PRINT,           // -
+    OP_PRINT,               // -
 
 } OpCode;
 

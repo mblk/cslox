@@ -211,12 +211,18 @@ static const chunk_t* get_current_chunk(vm_t* vm) {
 static void runtime_error(vm_t* vm, const char* format, ...) {
     // print error
     {
-        fprintf(stderr, "Runtime error: ");
+        fprintf(stderr, "RuntimeError: ");
      
         va_list args;
         va_start(args, format);
         vfprintf(stderr, format, args);
         va_end(args);
+
+        size_t len = strlen(format);
+        if (len > 0 && format[len-1] != '.') {
+            fputs(".", stderr);
+        }
+
         fputs("\n", stderr);
     }
 
@@ -271,8 +277,12 @@ run_result_t vm_run_source(vm_t* vm, const char* source) {
     const run_result_t result = vm_run(vm);
 
     // vm_run should return a clean vm
-    assert(vm->sp == vm->stack);
-    assert(vm->frame_count == 0);
+    if (result == RUN_OK) {
+        assert(vm->sp == vm->stack);
+        assert(vm->frame_count == 0);
+    } else {
+        // TODO ?
+    }
 
     return result;
 }
@@ -568,7 +578,7 @@ static run_result_t vm_run(vm_t* vm) {
     #define UNARY_NUMBER_OP(op) \
         do { \
             if (!IS_NUMBER(PEEK(0))) { \
-                ERROR("Operand must be number"); \
+                ERROR("Operand must be a number"); \
             } \
             value_t right = POP(); \
             value_t result = NUMBER_VALUE(op AS_NUMBER(right)); \
@@ -585,7 +595,7 @@ static run_result_t vm_run(vm_t* vm) {
 
     #define BINARY_NUMBER_OP(result_type, op) \
         do { \
-            if (!IS_NUMBER(PEEK(1)) || !IS_NUMBER(PEEK(1))) { \
+            if (!IS_NUMBER(PEEK(0)) || !IS_NUMBER(PEEK(1))) { \
                 ERROR("Operands must be numbers"); \
             } \
             value_t right = POP(); \
@@ -602,7 +612,7 @@ static run_result_t vm_run(vm_t* vm) {
             printf("Next: ");
 
             const chunk_t* const chunk = &frame->closure->function->chunk;
-            disassemble_instruction(chunk, (size_t)(frame->ip - chunk->code));
+            disassemble_instruction(chunk, (size_t)(ip - chunk->code));
         }
         #endif
 
@@ -708,8 +718,9 @@ static run_result_t vm_run(vm_t* vm) {
                 break;
             }
 
-            case OP_GET_UPVALUE: {
-                const uint8_t upvalue_index = READ_BYTE();
+            case OP_GET_UPVALUE:
+            case OP_GET_UPVALUE_LONG: {
+                const uint8_t upvalue_index = opcode == OP_GET_UPVALUE ? READ_BYTE() : READ_UINT32();
                 assert(upvalue_index < frame->closure->upvalue_count);
 
                 const value_t value = *(frame->closure->upvalues[upvalue_index]->target);
@@ -717,8 +728,9 @@ static run_result_t vm_run(vm_t* vm) {
                 break;
             }
 
-            case OP_SET_UPVALUE: {
-                const uint8_t upvalue_index = READ_BYTE();
+            case OP_SET_UPVALUE:
+            case OP_SET_UPVALUE_LONG: {
+                const uint8_t upvalue_index = opcode == OP_SET_UPVALUE ? READ_BYTE() : READ_UINT32();
                 assert(upvalue_index < frame->closure->upvalue_count);
 
                 *(frame->closure->upvalues[upvalue_index]->target) = PEEK(0);

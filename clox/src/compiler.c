@@ -13,6 +13,9 @@
 
 //#define COMPILER_PRINT_CALLS
 
+//#define COMPILER_PRINT_CODE
+
+
 // Max number of locals per compiler/function
 #define COMPILER_MAX_LOCALS 256
 
@@ -36,12 +39,13 @@ typedef struct {
 
 typedef struct {
     bool is_local; // local or upvalue
+    bool is_const;
     size_t index;
 } upvalue_t;
 
 typedef struct {
     size_t continue_addr;
-    size_t break_jumps[COMPILER_MAX_BREAKS];
+    size_t break_jumps[COMPILER_MAX_BREAKS]; // TODO use dynamic array
     size_t break_jump_count;
     int scope_depth_at_start;
 } loop_t;
@@ -62,15 +66,15 @@ typedef struct compiler {
     int scope_depth;
 
     // locals
-    local_t locals[COMPILER_MAX_LOCALS];
+    local_t locals[COMPILER_MAX_LOCALS]; // TODO use dynamic array
     size_t local_count;
 
     // upvalues
-    upvalue_t upvalues[COMPILER_MAX_UPVALUES];
+    upvalue_t upvalues[COMPILER_MAX_UPVALUES]; // TODO use dynamic array
     size_t upvalue_count;
     
     // for break/continue
-    loop_t loops[COMPILER_MAX_LOOPS];
+    loop_t loops[COMPILER_MAX_LOOPS]; // TODO use dynamic array
     size_t loop_count;
 
 } compiler_t;
@@ -236,7 +240,8 @@ static void begin_compiler(parser_t* parser, compiler_t* compiler, object_root_t
         compiler->local_count++;
 
         local_t *const local = compiler->locals;
-
+        
+        memset(local, 0, sizeof(local_t));
         local->name = (token_t) { .type = TOKEN_NONE, .start = "", .length = 0, .line = 0 };
         local->is_const = true;
         local->depth = 0;
@@ -254,23 +259,24 @@ static const function_object_t* end_compiler(parser_t* parser) {
     // remove from list
     parser->current_compiler = compiler->enclosing;
 
+    #ifdef COMPILER_PRINT_CODE
     {
         //printf("== end_compiler: '%s' ==\n", function->name ? function->name->chars : "NULL");
-
+        
         value_t value = OBJECT_VALUE((object_t*)function);
         char buffer[128];
         print_value_to_buffer(buffer, sizeof(buffer), value);
-
+        
         //value_array_dump(&function->chunk.values);
-
+        
         // for (size_t i=0; i<compiler->upvalue_count; i++) {
         //     const upvalue_t* const upvalue = compiler->upvalues + i;
         //     printf("upvalue %zu: is_local=%d index=%zu\n", i, (int)upvalue->is_local, upvalue->index);
         // }
-
+            
         disassemble_chunk(&function->chunk, buffer);
     }
-    //xxx
+    #endif
 
     return function;
 }
@@ -306,6 +312,8 @@ static void error_at_token(parser_t* parser, const token_t* token, const char *m
 
     if (token->type == TOKEN_EOF) {
         fprintf(stderr, " at end");
+    } else if (token->type == TOKEN_ERROR) {
+        // Nothing.
     } else {
         fprintf(stderr, " at '%.*s'", token->length, token->start);
     }
@@ -475,7 +483,7 @@ static void emit_get_upvalue(parser_t* parser, uint32_t upvalue_index) {
     if (upvalue_index < 256) {
         emit_bytes(parser, OP_GET_UPVALUE, (uint8_t)upvalue_index);
     } else {
-        assert(!"TODO");
+        emit_byte_and_long(parser, OP_GET_UPVALUE_LONG, upvalue_index);
     }
 }
 
@@ -483,7 +491,7 @@ static void emit_set_upvalue(parser_t* parser, uint32_t upvalue_index) {
     if (upvalue_index < 256) {
         emit_bytes(parser, OP_SET_UPVALUE, (uint8_t)upvalue_index);
     } else {
-        assert(!"TODO");
+        emit_byte_and_long(parser, OP_SET_UPVALUE_LONG, upvalue_index);
     }
 }
 
@@ -619,6 +627,7 @@ static size_t add_local(parser_t* parser, token_t name, bool is_const) {
     const size_t index = compiler->local_count++;
     local_t* const local = compiler->locals + index;
 
+    memset(local, 0, sizeof(local_t));
     local->name = name;
     local->is_const = is_const;
     local->depth = -1; // mark as 'declared but not initialized'
@@ -632,7 +641,7 @@ static size_t add_hidden_local(parser_t* parser) {
     return add_local(parser, name, true);
 }
 
-static size_t add_upvalue(parser_t* parser, compiler_t* compiler, bool is_local, size_t index) {
+static size_t add_upvalue(parser_t* parser, compiler_t* compiler, bool is_local, size_t index, bool is_const) {
     // index refers to local or upvalue in directly enclosing compiler
 
     // try to reuse existing upvalues
@@ -640,6 +649,10 @@ static size_t add_upvalue(parser_t* parser, compiler_t* compiler, bool is_local,
         const upvalue_t* const upvalue = compiler->upvalues + i;
 
         if (upvalue->index == index && upvalue->is_local == is_local) {
+            if (upvalue->is_const != is_const) {
+                // Not sure if that can actually happen
+                error_at_current(parser, "Upvalue is_const mismatch");
+            }
             return i;
         }
     }
@@ -653,7 +666,10 @@ static size_t add_upvalue(parser_t* parser, compiler_t* compiler, bool is_local,
     {
         const size_t upvalue_index = compiler->upvalue_count++;
         upvalue_t* const upvalue = compiler->upvalues + upvalue_index;
+
+        memset(upvalue, 0, sizeof(upvalue_t));
         upvalue->is_local = is_local;
+        upvalue->is_const = is_const;
         upvalue->index = index;
 
         // mirror count in function-object
@@ -662,8 +678,6 @@ static size_t add_upvalue(parser_t* parser, compiler_t* compiler, bool is_local,
         return upvalue_index;
     }
 }
-
-
 
 static bool resolve_local_at_compiler(parser_t* parser, compiler_t* compiler, const token_t* name, size_t* out_local_index, bool* out_is_const) {
     assert(compiler);
@@ -696,7 +710,10 @@ static bool resolve_local(parser_t* parser, const token_t* name, size_t* out_loc
     return resolve_local_at_compiler(parser, compiler, name, out_local_index, out_is_const);
 }
 
-static bool resolve_upvalue(parser_t* parser, compiler_t* compiler, const token_t* name, size_t* out_upvalue_index) {
+static bool resolve_upvalue(parser_t* parser, compiler_t* compiler, const token_t* name, size_t* out_upvalue_index, bool* out_upvalue_is_const) {
+    assert(out_upvalue_index);
+    assert(out_upvalue_is_const);
+
     // Note: An upvalue can either reference a local in the directly enclosing compiler
     //                          or reference another upvalue in the directly enclosing compiler.
     //
@@ -726,23 +743,22 @@ static bool resolve_upvalue(parser_t* parser, compiler_t* compiler, const token_
     bool is_const = false;
     size_t local_index = 0;
     if (resolve_local_at_compiler(parser, compiler->enclosing, name, &local_index, &is_const)) {
-        if (is_const) {
-            // TODO
-            assert(!"Upvalue to const not yet supported.");
-        }
 
         // mark local as captured
         compiler->enclosing->locals[local_index].is_captured = true;
 
         // found local in enclosing compiler
-        *out_upvalue_index = add_upvalue(parser, compiler, true, local_index);
+        *out_upvalue_index = add_upvalue(parser, compiler, true, local_index, is_const);
+        *out_upvalue_is_const = is_const;
         return true;
     }
 
+    bool upvalue_is_const = false;
     size_t upvalue_index = 0;
-    if (resolve_upvalue(parser, compiler->enclosing, name, &upvalue_index)) {
+    if (resolve_upvalue(parser, compiler->enclosing, name, &upvalue_index, &upvalue_is_const)) {
         // found upvalue in enclosing compiler
-        *out_upvalue_index = add_upvalue(parser, compiler, false, upvalue_index);
+        *out_upvalue_index = add_upvalue(parser, compiler, false, upvalue_index, upvalue_is_const);
+        *out_upvalue_is_const = upvalue_is_const;
         return true;
     }
 
@@ -770,7 +786,7 @@ static void declare_variable(parser_t* parser, bool is_const) {
         }
 
         if (identifiers_equal(&name, &local->name)) {
-            error_at_previous(parser, "Already variable with this name in this scope.");
+            error_at_previous(parser, "Already a variable with this name in this scope.");
         }
     }
 
@@ -870,9 +886,12 @@ static void variable(parser_t* parser, bool can_assign) {
         } else {
             emit_get_local(parser, local_index);
         }
-    } else if (resolve_upvalue(parser, parser->current_compiler, name, &upvalue_index)) {
+    } else if (resolve_upvalue(parser, parser->current_compiler, name, &upvalue_index, &is_const)) {
         // upvalue
         if (can_assign && match(parser, TOKEN_EQUAL)) {
+            if (is_const) {
+                error_at_previous(parser, "Can't assign to const variable.");
+            }
             expression(parser);
             emit_set_upvalue(parser, upvalue_index);
         } else {
@@ -1001,6 +1020,11 @@ static size_t argument_list(parser_t* parser) {
             // parser arg-expression and leave it on the stack
             expression(parser);
             count++;
+
+            if (count > 255) {
+                error_at_previous(parser, "Can't have more than 255 arguments.");
+            }
+
         } while (match(parser, TOKEN_COMMA));
     }
     consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
@@ -1013,10 +1037,6 @@ static void call(parser_t* parser, bool) {
     // (a1, a2, a3, ...)
 
     const size_t arg_count = argument_list(parser);
-
-    if (arg_count > 255) {
-        error_at_current(parser, "Can't have more than 255 arguments.");
-    }
 
     emit_bytes(parser, OP_CALL, (uint8_t)arg_count);
 }
@@ -1031,6 +1051,7 @@ static void synchronize(parser_t* parser) {
 
         if (parser->previous.type == TOKEN_SEMICOLON) {
             // found good sync point
+            parser->panic_mode = false;
             return;
         }
 
@@ -1237,7 +1258,9 @@ static void function(parser_t* parser) {
             }
 
             parse_variable_name_and_declare(parser, true, "Expect parameter name.");
-            mark_initialized(parser);
+            if (arity <= 255) {
+                mark_initialized(parser);
+            }
         } while (match(parser, TOKEN_COMMA));
         compiler.function->arity = arity;
     }
@@ -1267,15 +1290,15 @@ static void fun_declaration(parser_t* parser) {
 
     const size_t global_id = parse_variable_name_and_declare(parser, true, "Expect function name.");
 
+    // left as 'declared but not initialized' in parse_variable_name().
+    // mark local as 'initialized' (ignored if global)
+    mark_initialized(parser);
+
     // parse parameters and body
     function(parser);
 
     if (compiler->scope_depth > 0) {
         // local variable, value is just left on the stack
-
-        // left as 'declared but not initialized' in parse_variable_name().
-        // mark local as 'initialized'.
-        mark_initialized(parser);
     } else {
         // global variable
         emit_define_global(parser, global_id);
@@ -1603,7 +1626,8 @@ static void break_statement(parser_t* parser) {
     compiler_t* const compiler = get_compiler(parser);
     
     if (compiler->loop_count == 0) {
-        error_at_previous(parser, "Can't use 'break' outside loops.");
+        error_at_previous(parser, "Can't break outside loop.");
+        return;
     }
 
     const size_t target_loop_offset = parse_loop_offset(parser);
@@ -1629,7 +1653,8 @@ static void continue_statement(parser_t* parser) {
     compiler_t* const compiler = get_compiler(parser);
     
     if (compiler->loop_count == 0) {
-        error_at_previous(parser, "Can't use 'continue' outside loops.");
+        error_at_previous(parser, "Can't continue outside loop.");
+        return;
     }
 
     const size_t target_loop_offset = parse_loop_offset(parser);
@@ -1719,24 +1744,6 @@ const function_object_t* compile(object_root_t* root, const char* source) {
     assert(root);
     assert(source);
 
-    //printf("compile: START %s END\n", source);
-
-    //xxx
-    if (false)
-    {
-        scanner_t scanner;
-        scanner_init(&scanner, source);
-
-        for(;;) {
-            const token_t token = scan_token(&scanner);
-            printf("Token: %16s '%.*s'\n", token_type_to_string(token.type), token.length, token.start);
-            if (token.type == TOKEN_EOF) break;
-        }
-        return NULL;
-    }
-    //xxx
-    
-
     parser_t parser;
     parser_init(&parser, root, source);
 
@@ -1755,7 +1762,6 @@ const function_object_t* compile(object_root_t* root, const char* source) {
         }
         emit_return(&parser);
     }
-
 
     const function_object_t* function = end_compiler(&parser);
 
