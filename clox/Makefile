@@ -14,7 +14,8 @@ LD = gcc
 #LD = clang
 
 # Flags
-COMMON_CFLAGS = -std=c23 -c -Wall -Wextra -Werror
+#COMMON_CFLAGS = -std=c23 -c -Wall -Wextra -Werror			# too new for githubs ubuntu-latest
+COMMON_CFLAGS = -std=c2x -c -Wall -Wextra -Werror
 COMMON_LDFLAGS =
 
 ifeq ($(BUILD), release)

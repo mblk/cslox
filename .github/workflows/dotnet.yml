@@ -21,6 +21,8 @@ jobs:
       run: dotnet restore
     - name: Build
       run: dotnet build --no-restore --configuration Release
+    - name: print gcc version
+      run: gcc --version
     - name: make clox
       run: cd clox; make BUILD=release
     - name: Test
